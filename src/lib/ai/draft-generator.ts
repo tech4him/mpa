@@ -78,25 +78,34 @@ export async function generateDraft(request: DraftRequest): Promise<{
     const draft = await generateAIDraft(user, thread, messages || [], writingStyle, request)
 
     // Store draft
-    const { data: draftRecord } = await supabase
+    const { data: draftRecord, error } = await supabase
       .from('email_drafts')
       .insert({
         user_id: request.userId,
         thread_id: request.threadId,
         subject: draft.subject,
         content: draft.content,
+        draft_content: draft.content, // Required NOT NULL field
         draft_type: request.draftType,
+        draft_version: 1,
         confidence_score: draft.confidence,
+        ai_confidence: draft.confidence,
         ai_reasoning: draft.reasoning,
         status: 'pending_review',
-        metadata: {
+        context_used: {
           urgency: request.urgency,
           recipient_relationship: request.recipientRelationship,
-          context: request.context
+          context: request.context,
+          writing_style: writingStyle
         }
       })
       .select('id')
       .single()
+      
+    if (error) {
+      console.error('Error storing draft:', error)
+      throw new Error('Failed to store draft')
+    }
 
     return {
       id: draftRecord!.id,
@@ -132,23 +141,31 @@ Best regards,
 [Your Name]`
 
   // Store mock draft
-  const { data: draftRecord } = await supabase
+  const { data: draftRecord, error } = await supabase
     .from('email_drafts')
     .insert({
       user_id: request.userId,
       thread_id: request.threadId,
       subject: `Re: ${thread?.subject || 'Your email'}`,
       content: mockContent,
+      draft_content: mockContent, // Required NOT NULL field
       draft_type: request.draftType,
+      draft_version: 1,
       confidence_score: 0.7,
+      ai_confidence: 0.7,
       ai_reasoning: 'Mock draft generated (OpenAI API key not configured)',
       status: 'pending_review'
     })
     .select('id')
     .single()
 
+  if (error) {
+    console.error('Error storing mock draft:', error)
+    throw new Error('Failed to store mock draft')
+  }
+
   return {
-    id: draftRecord!.id,
+    id: draftRecord?.id || 'mock-' + Date.now(),
     content: mockContent,
     subject: `Re: ${thread?.subject || 'Your email'}`,
     confidence: 0.7,

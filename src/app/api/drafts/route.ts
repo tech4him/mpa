@@ -69,8 +69,11 @@ export async function POST(request: NextRequest) {
         thread_id,
         subject: subject || 'Re: Draft',
         content,
+        draft_content: content, // Required NOT NULL field
         draft_type,
+        draft_version: 1,
         confidence_score,
+        ai_confidence: confidence_score,
         ai_reasoning,
         status: 'pending_review'
       })
