@@ -81,7 +81,7 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
       const tasksResponse = await fetch(`/api/tasks?threadId=${threadId}`)
       if (tasksResponse.ok) {
         const tasksData = await tasksResponse.json()
-        setTasks(tasksData)
+        setTasks(tasksData.tasks || [])
       }
 
       // Load AI recommendations
@@ -170,7 +170,8 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
       })
 
       if (response.ok) {
-        const newTasks = await response.json()
+        const result = await response.json()
+        const newTasks = result.tasks || []
         setTasks(prev => [...prev, ...newTasks])
         setActiveTab('tasks')
       }
