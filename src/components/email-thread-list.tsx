@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { formatDistanceToNow } from 'date-fns'
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,7 +28,7 @@ interface EmailThread {
   has_unread: boolean
   is_action_required: boolean
   category: 'ACTION_REQUIRED' | 'FYI_ONLY' | 'FINANCIAL' | 'MEETING_REQUEST' | 'VIP_CRITICAL'
-  priority: 'high' | 'medium' | 'low'
+  priority: number
 }
 
 interface EmailThreadListProps {
@@ -60,13 +61,11 @@ export function EmailThreadList({ threads }: EmailThreadListProps) {
   }
 
   // Get priority color
-  const getPriorityColor = (priority: EmailThread['priority']) => {
-    switch (priority) {
-      case 'high': return 'text-red-600'
-      case 'medium': return 'text-yellow-600'
-      case 'low': return 'text-green-600'
-      default: return 'text-gray-600'
-    }
+  const getPriorityColor = (priority: number) => {
+    if (priority === 1) return 'text-red-600'
+    if (priority === 2) return 'text-orange-600'
+    if (priority === 3) return 'text-yellow-600'
+    return 'text-gray-600'
   }
 
   // Sync emails
@@ -226,9 +225,10 @@ export function EmailThreadList({ threads }: EmailThreadListProps) {
                 const CategoryIcon = categoryBadge.icon
                 
                 return (
-                  <Card key={thread.id} className={`cursor-pointer transition-all hover:shadow-md ${
-                    thread.has_unread ? 'border-blue-200 bg-blue-50/50' : ''
-                  }`}>
+                  <Link key={thread.id} href={`/dashboard/thread/${thread.id}`}>
+                    <Card className={`cursor-pointer transition-all hover:shadow-md ${
+                      thread.has_unread ? 'border-blue-200 bg-blue-50/50' : ''
+                    }`}>
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
@@ -242,7 +242,7 @@ export function EmailThreadList({ threads }: EmailThreadListProps) {
                             </Badge>
                             <div className={`flex items-center space-x-1 ${getPriorityColor(thread.priority)}`}>
                               <AlertCircle className="h-3 w-3" />
-                              <span className="text-xs font-medium capitalize">{thread.priority}</span>
+                              <span className="text-xs font-medium">Priority {thread.priority}</span>
                             </div>
                           </div>
                         </div>
@@ -290,7 +290,8 @@ export function EmailThreadList({ threads }: EmailThreadListProps) {
                         {thread.participants.length > 3 && ` +${thread.participants.length - 3} more`}
                       </div>
                     </CardContent>
-                  </Card>
+                    </Card>
+                  </Link>
                 )
               })
             )}
