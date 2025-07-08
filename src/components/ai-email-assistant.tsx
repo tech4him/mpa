@@ -35,13 +35,11 @@ interface AIDraft {
 
 interface ExtractedTask {
   id: string
-  title: string
-  description: string
+  task_description: string
   due_date?: string
-  priority: 'low' | 'medium' | 'high'
   status: 'pending' | 'in_progress' | 'completed'
   confidence: number
-  task_type: 'task' | 'commitment' | 'follow_up'
+  assigned_to?: string
 }
 
 interface AIRecommendation {
@@ -230,19 +228,16 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
     }
   }
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'text-red-600 bg-red-50'
-      case 'medium': return 'text-yellow-600 bg-yellow-50'
-      case 'low': return 'text-green-600 bg-green-50'
-      default: return 'text-gray-600 bg-gray-50'
-    }
-  }
-
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.8) return 'text-green-600'
     if (confidence >= 0.6) return 'text-yellow-600'
     return 'text-red-600'
+  }
+
+  const getConfidenceBadgeColor = (confidence: number) => {
+    if (confidence >= 0.8) return 'text-green-600 bg-green-50'
+    if (confidence >= 0.6) return 'text-yellow-600 bg-yellow-50'
+    return 'text-red-600 bg-red-50'
   }
 
   return (
@@ -458,25 +453,24 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <h3 className="font-medium">{task.title}</h3>
-                        <p className="text-sm text-gray-600 mt-1">{task.description}</p>
+                        <h3 className="font-medium">{task.task_description}</h3>
                         <div className="flex items-center space-x-2 mt-2">
                           <Badge 
                             variant="outline" 
-                            className={getPriorityColor(task.priority)}
-                          >
-                            {task.priority} priority
-                          </Badge>
-                          <Badge variant="outline" className="capitalize">
-                            {task.task_type}
-                          </Badge>
-                          <Badge 
-                            variant="outline" 
-                            className={getConfidenceColor(task.confidence)}
+                            className={getConfidenceBadgeColor(task.confidence)}
                           >
                             {Math.round(task.confidence * 100)}% confident
                           </Badge>
+                          <Badge variant="outline" className="capitalize">
+                            {task.status}
+                          </Badge>
                         </div>
+                        {task.assigned_to && (
+                          <div className="flex items-center space-x-1 mt-2 text-sm text-gray-500">
+                            <User className="h-4 w-4" />
+                            <span>Assigned to: {task.assigned_to}</span>
+                          </div>
+                        )}
                         {task.due_date && (
                           <div className="flex items-center space-x-1 mt-2 text-sm text-gray-500">
                             <Calendar className="h-4 w-4" />

@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const taskType = searchParams.get('taskType')
 
     let query = supabase
-      .from('tasks')
+      .from('extracted_tasks')
       .select(`
         *,
         email_threads (
@@ -79,35 +79,29 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const { 
-      title, 
-      description, 
+      task_description, 
       due_date, 
-      priority, 
-      task_type, 
       thread_id,
       assigned_to 
     } = body
 
-    if (!title || !description) {
+    if (!task_description) {
       return NextResponse.json(
-        { error: 'Missing required fields: title, description' }, 
+        { error: 'Missing required field: task_description' }, 
         { status: 400 }
       )
     }
 
     const { data: task, error } = await supabase
-      .from('tasks')
+      .from('extracted_tasks')
       .insert({
         user_id: user.id,
         thread_id: thread_id || null,
-        title,
-        description,
+        task_description,
         due_date: due_date || null,
         assigned_to: assigned_to || null,
-        priority: priority || 'medium',
-        task_type: task_type || 'task',
         status: 'pending',
-        source: 'manual'
+        confidence: 1.0
       })
       .select()
       .single()

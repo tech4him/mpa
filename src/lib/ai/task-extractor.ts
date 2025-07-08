@@ -1,10 +1,13 @@
 import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'dummy-key',
+// Check if OpenAI API key is configured
+const hasOpenAIKey = process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'dummy-key'
+
+const openai = hasOpenAIKey ? new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
   organization: process.env.OPENAI_ORG_ID,
-})
+}) : null
 
 interface ExtractedTask {
   title: string
@@ -83,6 +86,11 @@ async function extractTasksWithAI(
   threadContent: string, 
   category: string
 ): Promise<ExtractedTask[]> {
+  // Return empty array if no OpenAI key is configured
+  if (!hasOpenAIKey || !openai) {
+    console.log('OpenAI API key not configured, skipping task extraction')
+    return []
+  }
   const systemPrompt = `You are an expert at extracting actionable tasks, commitments, and follow-ups from email threads.
 
 Extract three types of items:
@@ -145,16 +153,11 @@ async function storeTasks(
     .map(task => ({
       user_id: userId,
       thread_id: threadId,
-      title: task.title,
-      description: task.description,
+      task_description: `${task.title}: ${task.description}`,
       due_date: task.due_date || null,
       assigned_to: task.assigned_to || null,
-      priority: task.priority,
       status: 'pending',
-      task_type: task.task_type || 'task',
-      confidence_score: task.confidence,
-      context: task.context,
-      source: 'ai_extraction'
+      confidence: task.confidence
     }))
 
   if (tasksToInsert.length === 0) {
@@ -162,7 +165,7 @@ async function storeTasks(
   }
 
   const { data: insertedTasks, error } = await supabase
-    .from('tasks')
+    .from('extracted_tasks')
     .insert(tasksToInsert)
     .select()
 
@@ -178,7 +181,7 @@ export async function getThreadTasks(userId: string, threadId: string) {
   const supabase = await createClient()
   
   const { data: tasks, error } = await supabase
-    .from('tasks')
+    .from('extracted_tasks')
     .select('*')
     .eq('user_id', userId)
     .eq('thread_id', threadId)
@@ -205,11 +208,8 @@ export async function updateTask(
   const supabase = await createClient()
   
   const { data: task, error } = await supabase
-    .from('tasks')
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString()
-    })
+    .from('extracted_tasks')
+    .update(updates)
     .eq('id', taskId)
     .eq('user_id', userId)
     .select()

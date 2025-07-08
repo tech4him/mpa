@@ -1,10 +1,13 @@
 import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'dummy-key',
+// Check if OpenAI API key is configured
+const hasOpenAIKey = process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'dummy-key'
+
+const openai = hasOpenAIKey ? new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
   organization: process.env.OPENAI_ORG_ID,
-})
+}) : null
 
 interface DraftRequest {
   threadId: string
@@ -22,6 +25,11 @@ export async function generateDraft(request: DraftRequest): Promise<{
   confidence: number
   reasoning: string
 }> {
+  // Return mock draft if no OpenAI key is configured
+  if (!hasOpenAIKey || !openai) {
+    return generateMockDraft(request)
+  }
+
   try {
     const supabase = await createClient()
 
@@ -104,8 +112,52 @@ export async function generateDraft(request: DraftRequest): Promise<{
   }
 }
 
+async function generateMockDraft(request: DraftRequest) {
+  const supabase = await createClient()
+  
+  // Get thread details for mock draft
+  const { data: thread } = await supabase
+    .from('email_threads')
+    .select('subject')
+    .eq('id', request.threadId)
+    .single()
+
+  const mockContent = `Thank you for your email. I appreciate you reaching out about this matter.
+
+I will review the details and get back to you within 1-2 business days with a comprehensive response.
+
+If this is urgent, please don't hesitate to call me directly.
+
+Best regards,
+[Your Name]`
+
+  // Store mock draft
+  const { data: draftRecord } = await supabase
+    .from('email_drafts')
+    .insert({
+      user_id: request.userId,
+      thread_id: request.threadId,
+      subject: `Re: ${thread?.subject || 'Your email'}`,
+      content: mockContent,
+      draft_type: request.draftType,
+      confidence_score: 0.7,
+      ai_reasoning: 'Mock draft generated (OpenAI API key not configured)',
+      status: 'pending_review'
+    })
+    .select('id')
+    .single()
+
+  return {
+    id: draftRecord!.id,
+    content: mockContent,
+    subject: `Re: ${thread?.subject || 'Your email'}`,
+    confidence: 0.7,
+    reasoning: 'Mock draft generated (OpenAI API key not configured)'
+  }
+}
+
 async function analyzeWritingStyle(userEmails: any[]) {
-  if (userEmails.length === 0) {
+  if (userEmails.length === 0 || !hasOpenAIKey || !openai) {
     return {
       tone: 'professional',
       style: 'concise',
@@ -170,6 +222,9 @@ async function generateAIDraft(
   writingStyle: any,
   request: DraftRequest
 ) {
+  if (!hasOpenAIKey || !openai) {
+    throw new Error('OpenAI API key not configured')
+  }
   const lastMessage = messages[messages.length - 1]
   const threadHistory = messages.map(msg => 
     `From: ${msg.from_name} <${msg.from_email}>\n` +

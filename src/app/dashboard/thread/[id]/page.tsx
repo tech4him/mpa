@@ -22,8 +22,9 @@ import Link from 'next/link'
 export default async function ThreadDetailPage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
+  const { id } = await params
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
@@ -36,7 +37,7 @@ export default async function ThreadDetailPage({
   const { data: thread } = await supabase
     .from('email_threads')
     .select('*')
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('user_id', user.id)
     .single()
 
@@ -48,7 +49,7 @@ export default async function ThreadDetailPage({
   const { data: messages } = await supabase
     .from('email_messages')
     .select('*')
-    .eq('thread_id', params.id)
+    .eq('thread_id', id)
     .order('received_at', { ascending: true })
 
   // Get category badge configuration
@@ -224,13 +225,7 @@ export default async function ThreadDetailPage({
 
           {/* AI Assistant - Right Column */}
           <div className="lg:col-span-1">
-            <AIEmailAssistant 
-              threadId={params.id}
-              onAction={(action, data) => {
-                // Handle AI actions
-                console.log('AI Action:', action, data)
-              }}
-            />
+            <AIEmailAssistant threadId={id} />
           </div>
         </div>
       </div>
