@@ -1,0 +1,19 @@
+{
+  "functions": {
+    "src/app/api/webhooks/outlook/route.ts": {
+      "maxDuration": 10
+    },
+    "src/app/api/process-email/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/briefing/generate/route.ts": {
+      "maxDuration": 300
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/briefing/generate",
+      "schedule": "0 7 * * *"
+    }
+  ]
+}

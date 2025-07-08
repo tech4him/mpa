@@ -1,0 +1,108 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { getMsalInstance } from '@/lib/msal-config'
+
+export default function LoginPage() {
+  const router = useRouter()
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  useEffect(() => {
+    const initializeMsal = async () => {
+      try {
+        const instance = getMsalInstance()
+        await instance.initialize()
+        setIsInitialized(true)
+        
+        // Check if we're returning from a redirect
+        const response = await instance.handleRedirectPromise()
+        if (response) {
+          console.log('Redirect response:', response)
+          // Handle successful authentication
+          router.push('/dashboard')
+        }
+      } catch (error) {
+        console.error('Failed to initialize MSAL:', error)
+        setError('Failed to initialize authentication. Please refresh the page.')
+      }
+    }
+
+    initializeMsal()
+  }, [router])
+
+  const handleLogin = async () => {
+    if (!isInitialized) {
+      setError('Authentication is still initializing. Please wait.')
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const msalInstance = getMsalInstance()
+      
+      console.log('MSAL Config:', {
+        clientId: process.env.NEXT_PUBLIC_MICROSOFT_CLIENT_ID,
+        tenantId: process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID,
+        authority: `https://login.microsoftonline.com/${process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID}`,
+        redirectUri: window.location.origin + '/auth/callback',
+        currentUrl: window.location.href,
+      })
+      
+      await msalInstance.loginRedirect({
+        scopes: ['User.Read', 'Mail.ReadWrite', 'Mail.Send', 'Calendars.Read', 'offline_access'],
+        prompt: 'select_account',
+      })
+    } catch (error) {
+      console.error('Login error:', error)
+      setError('Failed to initiate login. Please try again.')
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md space-y-8">
+        <div className="text-center">
+          <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
+            Mission Mutual AI Assistant
+          </h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Sign in with your Microsoft 365 account to continue
+          </p>
+        </div>
+
+        <div className="mt-8 space-y-6">
+          {error && (
+            <div className="rounded-md bg-red-50 p-4">
+              <div className="text-sm text-red-800">{error}</div>
+            </div>
+          )}
+
+          <button
+            onClick={handleLogin}
+            disabled={isLoading}
+            className="group relative flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
+          >
+            {isLoading ? (
+              <span>Redirecting to Microsoft...</span>
+            ) : (
+              <span>Sign in with Microsoft</span>
+            )}
+          </button>
+
+          <div className="text-center text-sm text-gray-600">
+            <p>
+              By signing in, you agree to allow the AI Assistant to access your
+              email on your behalf.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

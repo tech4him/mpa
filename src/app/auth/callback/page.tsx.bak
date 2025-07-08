@@ -1,0 +1,102 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { getMsalInstance } from '@/lib/msal-config'
+
+export default function CallbackPage() {
+  const router = useRouter()
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const handleCallback = async () => {
+      try {
+        const msalInstance = getMsalInstance()
+        await msalInstance.initialize()
+        
+        // Handle the redirect promise
+        const response = await msalInstance.handleRedirectPromise()
+        
+        if (response) {
+          console.log('Authentication successful:', response)
+          
+          // Get the access token
+          const account = response.account
+          if (!account) {
+            throw new Error('No account found')
+          }
+          
+          // Store the account for later use
+          msalInstance.setActiveAccount(account)
+          
+          // Send the token to our backend to create/update the user
+          const result = await fetch('/api/auth/callback', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              accessToken: response.accessToken,
+              account: {
+                homeAccountId: account.homeAccountId,
+                username: account.username,
+                name: account.name,
+              },
+            }),
+          })
+          
+          if (!result.ok) {
+            throw new Error('Failed to complete authentication')
+          }
+          
+          // Redirect to dashboard
+          router.push('/dashboard')
+        } else {
+          // No response means we're not coming from a redirect
+          router.push('/auth/login')
+        }
+      } catch (error) {
+        console.error('Callback error:', error)
+        setError('Authentication failed. Please try again.')
+      }
+    }
+    
+    handleCallback()
+  }, [router])
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="w-full max-w-md space-y-8">
+          <div className="text-center">
+            <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
+              Authentication Error
+            </h2>
+            <p className="mt-2 text-sm text-gray-600">{error}</p>
+            <a
+              href="/auth/login"
+              className="mt-4 inline-block font-medium text-blue-600 hover:text-blue-500"
+            >
+              Try again
+            </a>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md space-y-8">
+        <div className="text-center">
+          <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
+            Completing authentication...
+          </h2>
+          <div className="mt-4">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
