@@ -1,17 +1,19 @@
 # Product Requirements Document (PRD)
-## Mission Mutual AI Assistant - MVP
+## Mission Mutual Personal AI Assistant - MVP
 
 ### Executive Summary
-An intelligent email assistant that monitors Mission Mutual staff's Outlook 365 accounts, provides thread-aware intelligence, learns from user behavior, and automates routine tasks while maintaining full user control and organizational security.
+A proactive AI assistant that understands your complete work context across Microsoft 365 platforms (Email, Teams, SharePoint, OneDrive), learns your communication patterns, and autonomously handles routine tasks while providing intelligent daily briefings and draft responses that require your approval before sending.
 
 ### Vision Statement
-Transform email from a time sink into a strategic advantage by creating an AI assistant that truly understands context, learns from behavior, and proactively manages communication workflows for Mission Mutual's leadership team.
+Create a truly intelligent personal assistant that goes beyond basic email automation - one that understands your projects, relationships, and communication style across all work platforms, proactively identifies what needs your attention, and handles routine tasks autonomously while keeping you in complete control of important decisions.
 
 ### Success Metrics
-- Reduce email processing time by 50% (from ~3 hours to ~1.5 hours daily)
-- Achieve 80%+ draft acceptance rate within 30 days
-- Zero missed critical emails from VIPs or board members
-- 90% accuracy in task extraction and categorization
+- **Intelligence**: 90% context accuracy in daily briefings (understanding what actually matters)
+- **Autonomy**: 70% of routine emails handled automatically without user intervention
+- **Proactivity**: 80% of action items identified before user notices them
+- **Quality**: 85%+ draft acceptance rate with minimal edits
+- **Privacy**: Zero cross-user data leakage, complete user data isolation
+- **Efficiency**: Reduce daily "email management time" from 3 hours to 45 minutes
 
 ### User Personas
 
@@ -28,76 +30,77 @@ Transform email from a time sink into a strategic advantage by creating an AI as
 
 ### Core Features (MVP Scope)
 
-#### 1. Intelligent Thread Monitoring
-- **Real-time Webhook Integration**: Connect to Outlook 365 via Microsoft Graph API
-- **Thread Context Awareness**: Track entire conversation history, not individual emails
-- **Smart Categorization**: 
-  - ACTION_REQUIRED (needs response)
-  - FYI_ONLY (auto-file)
-  - FINANCIAL (special handling)
-  - MEETING_REQUEST (calendar integration)
-  - VIP_CRITICAL (immediate alert)
+#### 1. Cross-Platform Intelligence Foundation
+- **Personal Knowledge Base**: Private, encrypted vector store per user
+- **Multi-Platform Context**: Email, Teams, SharePoint, OneDrive, Google Drive integration
+- **Relationship Intelligence**: Learn communication patterns with each person/organization
+- **Project Context Awareness**: Understand ongoing initiatives from documents and conversations
+- **Communication Style Learning**: Analyze your writing patterns, tone, and preferences
 
-#### 2. Context-Aware Response Drafting
-- **Thread-Based Drafts**: Consider entire conversation when drafting
-- **Organizational Context**: Reference project documents, past decisions, and relationships
-- **Personality Learning**: Analyze last 90 days of sent emails for tone/style
-- **Recipient-Specific Adaptation**: Different tone for donors vs. team
-- **Edit Tracking**: Learn from changes user makes to drafts
-- **Fact Verification**: Cross-reference claims against organizational knowledge base
+#### 2. Proactive Daily Intelligence
+- **Morning Intelligence Briefing**: What you need to know, need to do, and anomalies requiring attention
+- **Priority Filtering**: Surface only what actually matters, hide routine noise
+- **Anomaly Detection**: Flag unusual patterns, urgent items, or things breaking normal rules
+- **Action Item Identification**: Extract commitments and deadlines across all platforms
+- **Context-Rich Summaries**: Understand why things are important, not just what happened
 
-#### 3. Daily Intelligence Briefing
-- **7 AM Daily Email**: Comprehensive overview of email state
-- **Smart Prioritization**: Based on sender importance and content urgency
-- **Thread Status Tracking**: Show momentum of ongoing conversations
-- **Action Summary**: What was auto-handled overnight
+#### 3. Autonomous Task Handling
+- **Rule-Based Automation**: Handle routine emails (admin notifications, confirmations) automatically
+- **Smart Filing**: Organize emails/documents based on project and content understanding
+- **Follow-up Management**: Track commitments and remind when action is needed
+- **Meeting Coordination**: Suggest times, prepare agendas based on context
+- **Document Organization**: Auto-file documents in correct SharePoint/Drive locations
 
-#### 4. Learning & Feedback System
-- **Inline Feedback**: Quick thumbs up/down on every AI action
-- **Edit Analysis**: Track differences between draft and sent
-- **Pattern Recognition**: Identify repeated corrections
-- **Monthly Learning Report**: Show AI improvement over time
+#### 4. Intelligent Draft Generation
+- **Full Context Drafts**: Consider conversation history, project status, and relationship dynamics
+- **Human-in-Loop**: Always requires approval before sending anything important
+- **Style Consistency**: Match your communication style for each recipient type
+- **Fact Verification**: Check claims against your knowledge base and documents
+- **Draft Explanations**: Show why AI chose this approach and what context it considered
 
-#### 5. Task & Commitment Extraction
-- **Automatic Detection**: Find commitments in email threads
-- **ClickUp Integration**: Create tasks with context
-- **Due Date Recognition**: Parse mentioned dates
-- **Assignment Logic**: Determine responsible party
+#### 5. Privacy-First Learning System
+- **Personal Vector Store**: Your data never mixes with other users
+- **Continuous Improvement**: Learn from your edits and feedback without compromising privacy
+- **Contextual Memory**: Remember project details, decision history, and communication preferences
+- **Adaptive Intelligence**: Improve understanding of your work patterns over time
 
 ### Out of Scope (MVP)
-- Calendar scheduling automation (Phase 2)
-- Slack/Teams integration (Phase 2)
-- Financial approval workflows (Phase 2)
-- Multi-org support beyond Mission Mutual (Future)
-- Mobile app (Future)
+- **Mobile Application**: Web-first approach, mobile optimization in Phase 2
+- **Multi-Organization Support**: Single-tenant focus for MVP
+- **Advanced Calendar Integration**: Basic meeting suggestions only, not full scheduling automation
+- **Third-Party Integrations**: Beyond Microsoft 365 and Google Drive (Slack, Zoom, etc.)
+- **Financial Workflow Automation**: Approval processes and budget tracking in Phase 2
+- **Real-Time Collaboration**: Document co-editing and live updates in Phase 2
 
 ### User Workflows
 
-#### Daily Email Review Workflow
-1. User opens web dashboard
-2. Sees prioritized email queue with AI-generated summaries
-3. Reviews and edits draft responses
-4. Provides feedback on AI actions
-5. Sends approved responses with one click
+#### Daily Intelligence Workflow (Primary)
+1. **Morning Briefing** (7 AM): Receive intelligent summary of what needs attention
+2. **Priority Review**: Review AI-identified urgent items and anomalies first
+3. **Draft Approval**: Review context-aware drafts with explanations, approve/edit/reject
+4. **Autonomous Monitoring**: AI handles routine items automatically, surfaces only exceptions
+5. **End-of-Day Summary**: Brief recap of what was handled and what's pending
 
-#### VIP Email Alert Workflow
-1. VIP email arrives
-2. System sends immediate Slack/SMS alert
-3. AI drafts response considering full context
-4. User reviews and sends from mobile or desktop
+#### Proactive Assistant Workflow
+1. **Context Detection**: AI notices project deadlines, follow-up needs, or relationship patterns
+2. **Proactive Suggestions**: "You usually follow up with X after 3 days, draft ready"
+3. **Anomaly Alerts**: "Client Y usually responds within 24 hours, it's been 3 days"
+4. **Action Preparation**: Pre-draft responses, prepare meeting agendas, organize documents
+5. **User Decision**: Simple approve/modify/delegate actions
 
-#### Learning Feedback Workflow
-1. User edits AI draft
-2. System captures diff
-3. User optionally adds note about why
-4. System updates patterns for future
+#### Continuous Learning Workflow
+1. **Pattern Recognition**: AI observes your communication preferences and decision patterns
+2. **Context Building**: Learns from document access, email interactions, and project involvement
+3. **Feedback Integration**: Incorporates your edits and preferences into personal model
+4. **Privacy Protection**: All learning stays within your personal, encrypted knowledge base
 
 ### Technical Constraints
-- Must work within Outlook 365 ecosystem
-- Cannot store emails long-term (reference only)
-- Must maintain audit trail of all actions
-- Response time <5 seconds for webhook acknowledgment
-- Support for 10,000+ emails per month
+- **Platform Agnostic**: Standalone application with API integrations, not constrained by M365 UI
+- **Privacy First**: Per-user encrypted vector stores, zero cross-user data leakage
+- **Performance**: <5 seconds webhook response, <15 seconds context-aware draft generation
+- **Scale**: Support 10,000+ emails and 1,000+ documents per user per month
+- **Cross-Platform**: Microsoft 365 Graph API integration for all services
+- **Compliance**: Maintain complete audit trail, data residency control
 
 ### Security Requirements
 - SOC 2 Type II compliance ready
@@ -109,43 +112,54 @@ Transform email from a time sink into a strategic advantage by creating an AI as
 ---
 
 # System Requirements Document (SRD)
-## Mission Mutual AI Assistant - MVP
+## Mission Mutual Personal AI Assistant - MVP
 
 ### 1. System Architecture
 
 #### 1.1 High-Level Architecture
 ```
-┌─────────────────────┐     ┌─────────────────────┐
-│   Microsoft 365     │────▶│   Webhook Handler   │
-│   (Email Source)    │     │   (Vercel Edge)     │
-└─────────────────────┘     └──────────┬──────────┘
-                                       │
-                            ┌──────────▼──────────┐
-                            │   Message Queue     │
-                            │   (QStash)          │
-                            └──────────┬──────────┘
-                                       │
-┌─────────────────────┐     ┌──────────▼──────────┐     ┌─────────────────────┐
-│   Web Dashboard     │────▶│   Agent Orchestrator│────▶│  OpenAI Vector Store│
-│   (Next.js)         │     │   (OpenAI Agents)   │     │  (Org Knowledge)    │
-└─────────────────────┘     └──────────┬──────────┘     └─────────────────────┘
-                                       │
-                            ┌──────────▼──────────┐
-                            │   Data Layer        │
-                            │   (Supabase)        │
-                            └─────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    Cross-Platform Data Sources                  │
+├─────────────────┬─────────────────┬─────────────────┬───────────┤
+│   Microsoft 365 │   SharePoint    │   OneDrive      │ Google    │
+│   (Email/Teams) │   (Documents)   │   (Files)       │ Drive     │
+└─────────────────┴─────────────────┴─────────────────┴───────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │   Data Ingestion      │
+                    │   Pipeline            │
+                    └───────────┬───────────┘
+                                │
+┌─────────────────────┐     ┌───▼────────────────────┐     ┌─────────────────────┐
+│   Personal AI       │────▶│  Intelligence Engine   │────▶│ Personal Vector     │
+│   Dashboard         │     │  (Context + Learning)  │     │ Store (Per User)    │
+│   (Next.js)         │     │                        │     │ (Encrypted)         │
+└─────────────────────┘     └───┬────────────────────┘     └─────────────────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │   Proactive Actions   │
+                    │   Engine              │
+                    └───────────┬───────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │   User Database       │
+                    │   (Supabase)          │
+                    └───────────────────────┘
 ```
 
 #### 1.2 Technology Stack
-- **Frontend**: Next.js 14 (App Router), Tailwind CSS, Shadcn/ui
+- **Frontend**: Next.js 15 (App Router), Tailwind CSS, Shadcn/ui
 - **Backend**: Vercel Edge Functions, Node.js
-- **Database**: Supabase (PostgreSQL)
-- **Queue**: Upstash QStash
-- **AI**: OpenAI Agents SDK with GPT-4o
-- **Vector Store**: OpenAI Vector Store API for organizational knowledge
-- **Email**: Microsoft Graph API v1.0
-- **Authentication**: Supabase Auth with Azure AD SSO
-- **Monitoring**: Vercel Analytics, Sentry, OpenAI Tracing
+- **Database**: Supabase (PostgreSQL) with Row-Level Security
+- **AI Platform**: OpenAI GPT-4o with Function Calling
+- **Vector Storage**: Per-user OpenAI Vector Stores (privacy-first)
+- **Cross-Platform APIs**: 
+  - Microsoft Graph API (Email, Teams, SharePoint, OneDrive)
+  - Google Drive API (documents and files)
+- **Queue System**: Upstash QStash for async processing
+- **Authentication**: Supabase Auth with Microsoft OAuth 2.0
+- **Encryption**: AES-256-GCM for sensitive data
+- **Monitoring**: Vercel Analytics, Sentry, OpenAI Usage Tracking
 
 ### 2. Database Schema
 
@@ -156,23 +170,32 @@ CREATE TABLE users (
   email TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   role TEXT CHECK (role IN ('admin', 'user')),
-  azure_ad_id TEXT UNIQUE,
-  encrypted_refresh_token TEXT,
-  preferences JSONB DEFAULT '{}',
+  microsoft_user_id TEXT UNIQUE,
+  google_user_id TEXT,
+  encrypted_microsoft_token TEXT,
+  encrypted_google_token TEXT,
+  personal_vector_store_id TEXT UNIQUE, -- OpenAI Vector Store ID for this user
+  intelligence_preferences JSONB DEFAULT '{}',
+  communication_style JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Email account connections
-CREATE TABLE email_accounts (
+-- Cross-platform integrations
+CREATE TABLE platform_integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  email_address TEXT NOT NULL,
-  microsoft_subscription_id TEXT UNIQUE,
-  webhook_secret TEXT NOT NULL,
+  platform TEXT NOT NULL CHECK (platform IN ('microsoft', 'google')),
+  platform_user_id TEXT NOT NULL,
+  encrypted_access_token TEXT NOT NULL,
+  encrypted_refresh_token TEXT,
+  token_expires_at TIMESTAMPTZ,
+  webhook_subscription_id TEXT,
   sync_status TEXT DEFAULT 'active',
   last_sync TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  enabled_services TEXT[] DEFAULT ARRAY['email'], -- email, teams, sharepoint, onedrive, drive, docs
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, platform)
 );
 
 -- Email thread tracking
@@ -269,16 +292,92 @@ CREATE TABLE contacts (
   UNIQUE(user_id, email)
 );
 
--- Daily briefing preferences and history
+-- Daily intelligence briefings
 CREATE TABLE daily_briefings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   briefing_date DATE NOT NULL,
-  content JSONB NOT NULL,
+  briefing_type TEXT DEFAULT 'morning' CHECK (briefing_type IN ('morning', 'evening')),
+  intelligence_summary JSONB NOT NULL, -- need_to_know, need_to_do, anomalies
+  actions_recommended JSONB DEFAULT '[]',
+  actions_taken_automatically JSONB DEFAULT '[]',
+  priority_score INTEGER DEFAULT 5,
+  generated_at TIMESTAMPTZ DEFAULT NOW(),
   delivered_at TIMESTAMPTZ,
-  opened_at TIMESTAMPTZ,
+  user_feedback TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, briefing_date)
+  UNIQUE(user_id, briefing_date, briefing_type)
+);
+
+-- Cross-platform content ingestion tracking
+CREATE TABLE content_ingestion (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL,
+  content_type TEXT NOT NULL, -- email, teams_message, document, calendar_event
+  platform_content_id TEXT NOT NULL,
+  content_summary TEXT,
+  extracted_entities JSONB DEFAULT '{}', -- people, projects, topics, dates
+  significance_score DECIMAL(3,2) DEFAULT 0.5,
+  vector_store_file_id TEXT, -- Reference to OpenAI Vector Store file
+  processed_at TIMESTAMPTZ DEFAULT NOW(),
+  last_referenced TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, platform, platform_content_id)
+);
+
+-- Personal relationship intelligence
+CREATE TABLE relationship_intelligence (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  contact_identifier TEXT NOT NULL, -- email or other unique ID
+  contact_name TEXT,
+  contact_organization TEXT,
+  relationship_type TEXT, -- colleague, client, vendor, board_member, etc.
+  communication_frequency TEXT, -- daily, weekly, monthly, occasional
+  communication_pattern JSONB DEFAULT '{}', -- preferred times, response patterns, etc.
+  project_associations TEXT[], -- projects they're involved with
+  importance_score INTEGER DEFAULT 5 CHECK (importance_score BETWEEN 1 AND 10),
+  last_interaction TIMESTAMPTZ,
+  interaction_count INTEGER DEFAULT 0,
+  context_summary TEXT, -- AI-generated summary of relationship context
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, contact_identifier)
+);
+
+-- Project and context awareness
+CREATE TABLE project_contexts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  project_name TEXT NOT NULL,
+  project_description TEXT,
+  project_status TEXT DEFAULT 'active' CHECK (project_status IN ('active', 'completed', 'on_hold', 'cancelled')),
+  key_participants TEXT[],
+  important_dates JSONB DEFAULT '{}', -- deadlines, milestones, etc.
+  related_documents TEXT[], -- platform-specific document IDs
+  ai_context_summary TEXT, -- AI-generated understanding of project
+  last_activity TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, project_name)
+);
+
+-- Intelligent action recommendations and automation
+CREATE TABLE intelligent_actions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  action_type TEXT NOT NULL, -- draft_reply, schedule_follow_up, file_document, create_task, etc.
+  trigger_context TEXT NOT NULL, -- what caused this action to be recommended
+  recommended_action JSONB NOT NULL, -- the specific action details
+  confidence_score DECIMAL(3,2) NOT NULL,
+  urgency_level INTEGER DEFAULT 5 CHECK (urgency_level BETWEEN 1 AND 10),
+  auto_execute BOOLEAN DEFAULT FALSE, -- whether this can be executed automatically
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'executed', 'rejected', 'expired')),
+  user_feedback TEXT,
+  executed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ
 );
 
 -- Organizational knowledge and context
@@ -792,30 +891,54 @@ SENTRY_DSN=
 - **Load Testing**: 100 concurrent emails
 - **Security Testing**: OWASP Top 10 compliance
 
-### 10. MVP Deliverables
+### 10. MVP Deliverables (Refocused Roadmap)
 
-1. **Week 1-2**: Core infrastructure, Microsoft integration, OpenAI Agents SDK setup
-2. **Week 3-4**: Vector store creation, historical data indexing, RAG tools
-3. **Week 5-6**: Agent-based email processing with context awareness
-4. **Week 7-8**: Learning system, feedback loop, and relationship intelligence
-5. **Week 9-10**: Daily briefing, web dashboard, and monitoring
-6. **Week 11-12**: Testing, security audit, deployment, and pilot with Tom
+#### **Phase 1: Intelligence Foundation (Weeks 1-3)**
+1. **Per-User Vector Store Architecture**: Privacy-first, encrypted personal knowledge bases
+2. **Cross-Platform Data Ingestion**: Microsoft 365 and Google Drive API integration
+3. **Personal Context Engine**: Relationship mapping, project awareness, communication patterns
+
+#### **Phase 2: Proactive Intelligence (Weeks 4-6)**
+1. **Daily Intelligence Briefing System**: Morning briefings with need-to-know, need-to-do, anomalies
+2. **Context-Aware Draft Generation**: Full work context consideration for responses
+3. **Autonomous Rule Engine**: Handle routine tasks automatically, surface exceptions
+
+#### **Phase 3: Learning & Adaptation (Weeks 7-9)**
+1. **Personal Learning System**: Adapt to communication style and preferences
+2. **Anomaly Detection**: Flag unusual patterns and important deviations
+3. **Proactive Action Recommendations**: Suggest follow-ups, meetings, and tasks
+
+#### **Phase 4: Production & Polish (Weeks 10-12)**
+1. **Personal AI Dashboard**: Clean interface for briefings and approvals
+2. **Privacy & Security Audit**: Ensure complete user data isolation
+3. **Pilot Deployment**: Full system testing with primary user
 
 ### 11. Success Criteria
 
-- Successfully process 95% of emails without errors
-- Generate contextually appropriate drafts 80% of the time
-- Achieve 90% accuracy in fact verification against organizational knowledge
-- Demonstrate project and relationship awareness in 85% of responses
-- Reduce email processing time by 50% for pilot user
-- Zero security incidents or data breaches
-- User satisfaction score of 4+ out of 5
+- **Intelligence Accuracy**: 90% of daily briefings contain only relevant, actionable information
+- **Autonomy Achievement**: 70% of routine tasks handled automatically without user intervention
+- **Context Understanding**: 85% of drafts demonstrate awareness of project/relationship context
+- **Privacy Protection**: 100% user data isolation - zero cross-user information leakage
+- **Proactive Value**: 80% of AI-surfaced anomalies/action items deemed valuable by user
+- **Time Savings**: Reduce daily email/communication management from 3 hours to 45 minutes
+- **User Trust**: User satisfaction score of 4.5+ out of 5 for AI decisions and recommendations
 
-### 12. Key Differentiators with RAG/Agent Approach
+### 12. Key Differentiators vs Existing Solutions
 
-1. **Full Organizational Context**: Every email response considers the complete organizational knowledge base
-2. **Fact Verification**: All claims and numbers verified against source documents
-3. **Project Awareness**: References specific initiatives, deadlines, and team members
-4. **Relationship Intelligence**: Tailored communication based on interaction history
-5. **Continuous Learning**: Vector store updates with every significant interaction
-6. **Production-Ready**: Built on OpenAI's battle-tested Agents SDK with built-in tracing
+#### **vs Microsoft Copilot:**
+- **Personal Context**: Learns your specific work patterns vs generic responses
+- **Cross-Platform Intelligence**: Unified view vs siloed assistance
+- **Privacy-First**: Your data stays yours vs shared model training
+- **Proactive Intelligence**: Identifies what needs attention vs reactive responses
+
+#### **vs Superhuman/SaneBox:**
+- **True Understanding**: Context-aware decisions vs rule-based filtering
+- **Full Work Context**: Beyond email to complete work intelligence
+- **Adaptive Learning**: Improves based on your patterns vs static rules
+- **Autonomous Actions**: Takes action vs just organizing
+
+#### **vs Traditional Email Clients:**
+- **Intelligent Assistant**: Proactive help vs passive tool
+- **Context Awareness**: Understands relationships and projects vs basic threading
+- **Cross-Platform**: Unified intelligence vs platform-specific features
+- **Learning System**: Adapts to you vs one-size-fits-all
