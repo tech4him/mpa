@@ -1,0 +1,451 @@
+import { createClient } from '@/lib/supabase/server'
+import { VectorStoreService } from '@/lib/vector-store/service'
+import { tool } from '@openai/agents'
+
+// Initialize vector store service
+const vectorStoreService = new VectorStoreService()
+
+// Tool for searching project context
+export const searchProjectContext = tool({
+  name: 'searchProjectContext',
+  description: 'Search for project-related context and information from the organizational knowledge base',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'Search query for project context'
+      },
+      projectName: {
+        type: 'string',
+        description: 'Specific project name to search for (optional)'
+      },
+      participants: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'List of email participants to find related projects'
+      }
+    },
+    required: ['query']
+  }
+}, async ({ query, projectName, participants }) => {
+  try {
+    const supabase = await createClient()
+    
+    // Search vector store for project context
+    const vectorResults = await vectorStoreService.searchDocuments(query, {
+      filter: {
+        document_type: 'project',
+        ...(projectName && { project_name: projectName })
+      },
+      topK: 5
+    })
+    
+    // Get project details from database
+    let projectData = null
+    if (projectName) {
+      const { data } = await supabase
+        .from('project_context')
+        .select('*')
+        .eq('project_name', projectName)
+        .single()
+      
+      projectData = data
+    }
+    
+    // Search for projects involving participants
+    let participantProjects = []
+    if (participants && participants.length > 0) {
+      const { data } = await supabase
+        .from('project_context')
+        .select('*')
+        .overlaps('team_members', participants)
+        .limit(3)
+      
+      participantProjects = data || []
+    }
+    
+    return {
+      vectorResults: vectorResults.documents,
+      projectDetails: projectData,
+      participantProjects: participantProjects,
+      relevanceScore: vectorResults.relevanceScore
+    }
+  } catch (error) {
+    console.error('Error searching project context:', error)
+    return {
+      error: 'Failed to search project context',
+      vectorResults: [],
+      projectDetails: null,
+      participantProjects: []
+    }
+  }
+})
+
+// Tool for searching relationship history
+export const searchRelationshipHistory = tool({
+  name: 'searchRelationshipHistory',
+  description: 'Search for interaction history and communication patterns with specific contacts',
+  parameters: {
+    type: 'object',
+    properties: {
+      contacts: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'List of contact emails to search for'
+      },
+      timeframe: {
+        type: 'string',
+        description: 'Time period for history search (e.g., "last_30_days", "last_6_months")',
+        enum: ['last_7_days', 'last_30_days', 'last_3_months', 'last_6_months', 'last_year']
+      }
+    },
+    required: ['contacts']
+  }
+}, async ({ contacts, timeframe = 'last_6_months' }) => {
+  try {
+    const supabase = await createClient()
+    
+    // Calculate date range
+    const timeframeMap = {
+      'last_7_days': 7,
+      'last_30_days': 30,
+      'last_3_months': 90,
+      'last_6_months': 180,
+      'last_year': 365
+    }
+    
+    const daysBack = timeframeMap[timeframe as keyof typeof timeframeMap] || 180
+    const startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
+    
+    // Get relationship intelligence
+    const { data: relationships } = await supabase
+      .from('relationship_intelligence')
+      .select(`
+        *,
+        contacts!inner(email, name, organization, is_vip, total_interactions, last_interaction)
+      `)
+      .in('contacts.email', contacts)
+    
+    // Get recent thread interactions
+    const { data: threads } = await supabase
+      .from('email_threads')
+      .select('*')
+      .contains('participants', contacts)
+      .gte('last_message_date', startDate.toISOString())
+      .order('last_message_date', { ascending: false })
+    
+    // Analyze interaction patterns
+    const interactionAnalysis = analyzeInteractionPatterns(threads || [])
+    
+    return {
+      relationships: relationships || [],
+      recentThreads: threads || [],
+      interactionAnalysis,
+      communicationPatterns: extractCommunicationPatterns(relationships || []),
+      timeframeDays: daysBack
+    }
+  } catch (error) {
+    console.error('Error searching relationship history:', error)
+    return {
+      error: 'Failed to search relationship history',
+      relationships: [],
+      recentThreads: [],
+      interactionAnalysis: {},
+      communicationPatterns: {}
+    }
+  }
+})
+
+// Tool for verifying organizational facts
+export const verifyOrganizationalFacts = tool({
+  name: 'verifyOrganizationalFacts',
+  description: 'Verify claims or facts against the organizational knowledge base',
+  parameters: {
+    type: 'object',
+    properties: {
+      claims: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'List of claims or facts to verify'
+      },
+      context: {
+        type: 'string',
+        description: 'Additional context for verification'
+      }
+    },
+    required: ['claims']
+  }
+}, async ({ claims, context }) => {
+  try {
+    const verifications = await Promise.all(
+      claims.map(async (claim) => {
+        // Search vector store for supporting evidence
+        const evidence = await vectorStoreService.searchDocuments(claim, {
+          topK: 3
+        })
+        
+        // Calculate verification confidence
+        const confidence = evidence.relevanceScore || 0
+        const verified = confidence > 0.7
+        
+        return {
+          claim,
+          verified,
+          confidence,
+          evidence: evidence.documents,
+          supportingContext: evidence.documents.slice(0, 2).map(doc => doc.content)
+        }
+      })
+    )
+    
+    return {
+      verifications,
+      overallConfidence: verifications.reduce((acc, v) => acc + v.confidence, 0) / verifications.length,
+      contextProvided: context || null
+    }
+  } catch (error) {
+    console.error('Error verifying organizational facts:', error)
+    return {
+      error: 'Failed to verify organizational facts',
+      verifications: [],
+      overallConfidence: 0
+    }
+  }
+})
+
+// Tool for getting email thread context
+export const getEmailThreadContext = tool({
+  name: 'getEmailThreadContext',
+  description: 'Get comprehensive context for an email thread including history, participants, and related information',
+  parameters: {
+    type: 'object',
+    properties: {
+      threadId: {
+        type: 'string',
+        description: 'The ID of the email thread'
+      },
+      includeHistory: {
+        type: 'boolean',
+        description: 'Whether to include full message history',
+        default: true
+      }
+    },
+    required: ['threadId']
+  }
+}, async ({ threadId, includeHistory = true }) => {
+  try {
+    const supabase = await createClient()
+    
+    // Get thread details
+    const { data: thread } = await supabase
+      .from('email_threads')
+      .select('*')
+      .eq('id', threadId)
+      .single()
+    
+    if (!thread) {
+      return { error: 'Thread not found' }
+    }
+    
+    // Get messages if requested
+    let messages = []
+    if (includeHistory) {
+      const { data: messagesData } = await supabase
+        .from('email_messages')
+        .select('*')
+        .eq('thread_id', threadId)
+        .order('sent_date', { ascending: true })
+      
+      messages = messagesData || []
+    }
+    
+    // Get related tasks
+    const { data: tasks } = await supabase
+      .from('extracted_tasks')
+      .select('*')
+      .eq('thread_id', threadId)
+    
+    // Get drafts
+    const { data: drafts } = await supabase
+      .from('email_drafts')
+      .select('*')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: false })
+    
+    // Get participant intelligence
+    const participantIntelligence = await getParticipantIntelligence(thread.participants)
+    
+    return {
+      thread,
+      messages,
+      tasks: tasks || [],
+      drafts: drafts || [],
+      participantIntelligence,
+      messageCount: messages.length,
+      hasOngoingTasks: (tasks || []).some(task => task.status === 'pending'),
+      lastActivity: thread.last_message_date
+    }
+  } catch (error) {
+    console.error('Error getting email thread context:', error)
+    return {
+      error: 'Failed to get email thread context',
+      thread: null,
+      messages: [],
+      tasks: [],
+      drafts: []
+    }
+  }
+})
+
+// Tool for updating organizational memory
+export const updateOrganizationalMemory = tool({
+  name: 'updateOrganizationalMemory',
+  description: 'Update the organizational knowledge base with new information from email interactions',
+  parameters: {
+    type: 'object',
+    properties: {
+      documentType: {
+        type: 'string',
+        description: 'Type of document to store',
+        enum: ['email', 'decision', 'project', 'meeting', 'relationship']
+      },
+      content: {
+        type: 'string',
+        description: 'Content to store in the knowledge base'
+      },
+      metadata: {
+        type: 'object',
+        description: 'Additional metadata for the document'
+      },
+      significance: {
+        type: 'number',
+        description: 'Significance score (0-1) for this information',
+        minimum: 0,
+        maximum: 1
+      }
+    },
+    required: ['documentType', 'content']
+  }
+}, async ({ documentType, content, metadata = {}, significance = 0.5 }) => {
+  try {
+    const supabase = await createClient()
+    
+    // Only store significant information
+    if (significance < 0.3) {
+      return {
+        stored: false,
+        reason: 'Information below significance threshold'
+      }
+    }
+    
+    // Store in organizational knowledge table
+    const { data: knowledge, error } = await supabase
+      .from('organizational_knowledge')
+      .insert({
+        document_type: documentType,
+        content,
+        metadata: {
+          ...metadata,
+          significance,
+          created_by: 'ai_agent',
+          source: 'email_interaction'
+        }
+      })
+      .select()
+      .single()
+    
+    if (error) throw error
+    
+    // Also store in vector store for search
+    await vectorStoreService.storeDocument(content, {
+      documentType,
+      significance,
+      ...metadata
+    })
+    
+    return {
+      stored: true,
+      knowledgeId: knowledge.id,
+      significance,
+      documentType
+    }
+  } catch (error) {
+    console.error('Error updating organizational memory:', error)
+    return {
+      error: 'Failed to update organizational memory',
+      stored: false
+    }
+  }
+})
+
+// Helper functions
+function analyzeInteractionPatterns(threads: any[]) {
+  if (threads.length === 0) return {}
+  
+  const patterns = {
+    totalThreads: threads.length,
+    averageMessagesPerThread: threads.reduce((acc, t) => acc + t.message_count, 0) / threads.length,
+    priorityDistribution: {},
+    categoryDistribution: {},
+    timePattern: {}
+  }
+  
+  // Analyze priority distribution
+  threads.forEach(thread => {
+    const priority = thread.priority || 3
+    patterns.priorityDistribution[priority] = (patterns.priorityDistribution[priority] || 0) + 1
+  })
+  
+  // Analyze category distribution
+  threads.forEach(thread => {
+    const category = thread.category || 'UNKNOWN'
+    patterns.categoryDistribution[category] = (patterns.categoryDistribution[category] || 0) + 1
+  })
+  
+  return patterns
+}
+
+function extractCommunicationPatterns(relationships: any[]) {
+  const patterns = {}
+  
+  relationships.forEach(rel => {
+    const contact = rel.contacts
+    patterns[contact.email] = {
+      name: contact.name,
+      organization: contact.organization,
+      isVip: contact.is_vip,
+      totalInteractions: contact.total_interactions,
+      lastInteraction: contact.last_interaction,
+      communicationPreferences: rel.communication_preferences || {},
+      projectInvolvement: rel.project_involvement || []
+    }
+  })
+  
+  return patterns
+}
+
+async function getParticipantIntelligence(participants: string[]) {
+  const supabase = createServerClient()
+  
+  const { data: contacts } = await supabase
+    .from('contacts')
+    .select('*')
+    .in('email', participants)
+  
+  const intelligence = {}
+  
+  for (const contact of contacts || []) {
+    intelligence[contact.email] = {
+      name: contact.name,
+      organization: contact.organization,
+      isVip: contact.is_vip,
+      vipTier: contact.vip_tier,
+      totalInteractions: contact.total_interactions,
+      lastInteraction: contact.last_interaction,
+      communicationPreferences: contact.communication_preferences
+    }
+  }
+  
+  return intelligence
+}

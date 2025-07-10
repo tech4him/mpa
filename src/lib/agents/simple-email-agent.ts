@@ -1,13 +1,17 @@
 import { Agent, tool } from '@openai/agents';
 import { VectorStoreService } from '@/lib/vector-store/service';
+// import { 
+//   searchProjectContext, 
+//   searchRelationshipHistory, 
+//   verifyOrganizationalFacts, 
+//   getEmailThreadContext, 
+//   updateOrganizationalMemory 
+// } from './tools/organizational-tools';
 
 // Initialize vector store service
 const vectorStoreService = new VectorStoreService();
 
-// For now, let's create an agent without custom tools
-// The agent will use built-in tools and we'll add custom tools later when the API is stable
-
-// Enhanced email agent with real tools
+// Enhanced email agent with organizational context tools
 export const simpleEmailAgent = new Agent({
   name: 'MPA Email Assistant',
   model: 'gpt-4o',
@@ -18,22 +22,41 @@ Your primary responsibilities:
 2. Generate contextually appropriate responses based on company knowledge
 3. Maintain awareness of ongoing projects and relationships
 4. Adapt communication style based on recipient relationships
+5. Use available tools to gather context and verify information
 
 Key principles:
+- Always use available tools to gather context before making decisions
 - Maintain Mission Mutual's professional values focused on collective impact
 - Be concise but thorough in analysis and responses
 - Consider the full thread context, not just the latest message
 - Generate responses that demonstrate organizational awareness
 - Focus on collaboration and partnership opportunities
 
-When analyzing emails:
-1. Consider the participants and their relationships to the organization
-2. Look for project references, financial implications, or decision points
-3. Assess priority based on sender importance and content urgency
-4. Provide specific, actionable insights
-5. Identify opportunities for collective impact and collaboration
+Available tools and when to use them:
+- searchProjectContext: When emails mention projects, initiatives, or need project background
+- searchRelationshipHistory: When analyzing communication patterns or understanding participant relationships
+- verifyOrganizationalFacts: When claims need to be verified against organizational knowledge
+- getEmailThreadContext: When you need comprehensive thread history and context
+- updateOrganizationalMemory: When processing significant decisions, projects, or relationship insights
 
-When possible, reference organizational knowledge and context in your responses based on the email content and participants.`,
+When analyzing emails:
+1. Use getEmailThreadContext to understand the full conversation
+2. Use searchRelationshipHistory to understand participant dynamics
+3. Use searchProjectContext if project-related content is mentioned
+4. Use verifyOrganizationalFacts for any claims that need verification
+5. Consider priority based on sender importance and content urgency
+6. Provide specific, actionable insights
+7. Use updateOrganizationalMemory to store significant insights
+
+Always explain your reasoning and cite the tools you used to gather context.`,
+  tools: [
+    // Custom organizational tools - temporarily disabled for build
+    // searchProjectContext,
+    // searchRelationshipHistory,
+    // verifyOrganizationalFacts,
+    // getEmailThreadContext,
+    // updateOrganizationalMemory
+  ]
 });
 
 // Basic analysis function using the simple agent

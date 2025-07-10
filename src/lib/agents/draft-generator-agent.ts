@@ -63,8 +63,14 @@ export async function generateDraftWithAgent(request: DraftRequest): Promise<{
       body: msg.body
     })) || [];
 
-    // Use agent to generate draft with full context
-    const response = await run(simpleEmailAgent, `Generate a ${request.draftType} email draft with full organizational context:
+    // Use agent to generate draft with full organizational context
+    const response = await run(simpleEmailAgent, `Generate a ${request.draftType} email draft with full organizational context.
+
+First, use your available tools to gather comprehensive context:
+1. Use getEmailThreadContext to get the full thread history and context
+2. Use searchRelationshipHistory to understand the communication patterns with thread participants
+3. Use searchProjectContext if any project names or initiatives are mentioned
+4. Use verifyOrganizationalFacts for any claims that might need verification
 
 USER PROFILE:
 - Name: ${user.name}

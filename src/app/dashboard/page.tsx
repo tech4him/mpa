@@ -8,9 +8,10 @@ import { StatsCards } from '@/components/stats-cards'
 import { DashboardHeader } from '@/components/dashboard-header'
 import { EmailClassificationDashboard } from '@/components/email-classification-dashboard'
 import { ProcessingRulesManager } from '@/components/processing-rules-manager'
+import { DailyBriefingComponent } from '@/components/daily-briefing'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Eye, EyeOff, RefreshCw, Brain } from 'lucide-react'
+import { Eye, EyeOff, RefreshCw, Brain, TrendingUp } from 'lucide-react'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -19,6 +20,8 @@ export default function DashboardPage() {
   const [showProcessed, setShowProcessed] = useState(false)
   const [loading, setLoading] = useState(true)
   const [autoProcessing, setAutoProcessing] = useState(false)
+  const [briefing, setBriefing] = useState<any>(null)
+  const [briefingLoading, setBriefingLoading] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -30,6 +33,7 @@ export default function DashboardPage() {
     if (user) {
       loadThreads()
       loadClassificationStats()
+      loadBriefing()
     }
   }, [user, showProcessed])
 
@@ -108,6 +112,25 @@ export default function DashboardPage() {
     }
   }
 
+  const loadBriefing = async () => {
+    if (!user) return
+    
+    setBriefingLoading(true)
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const response = await fetch(`/api/briefing/generate?date=${today}&type=morning`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setBriefing(data.briefing)
+      }
+    } catch (error) {
+      console.error('Error loading briefing:', error)
+    } finally {
+      setBriefingLoading(false)
+    }
+  }
+
   const statsData = {
     totalThreads: threads?.length || 0,
     actionRequired: threads?.filter(t => t.is_action_required).length || 0,
@@ -170,8 +193,12 @@ export default function DashboardPage() {
         <StatsCards stats={statsData} />
 
         <div className="mt-8">
-          <Tabs defaultValue="emails" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+          <Tabs defaultValue="briefing" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="briefing" className="flex items-center space-x-1">
+                <TrendingUp className="h-4 w-4" />
+                <span>Daily Briefing</span>
+              </TabsTrigger>
               <TabsTrigger value="emails">
                 Email Threads 
                 {!showProcessed && (
@@ -190,6 +217,14 @@ export default function DashboardPage() {
                 <span>AI Rules</span>
               </TabsTrigger>
             </TabsList>
+            
+            <TabsContent value="briefing" className="mt-6">
+              <DailyBriefingComponent 
+                briefing={briefing}
+                onRefresh={loadBriefing}
+                loading={briefingLoading}
+              />
+            </TabsContent>
             
             <TabsContent value="emails" className="mt-6">
               <EmailThreadList 

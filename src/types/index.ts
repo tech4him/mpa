@@ -127,10 +127,53 @@ export interface DailyBriefing {
   id: string
   user_id: string
   briefing_date: Date
-  content: BriefingContent
+  briefing_type: 'morning' | 'evening'
+  intelligence_summary: IntelligenceSummary
+  actions_recommended: IntelligentAction[]
+  actions_taken_automatically: AutomatedAction[]
+  priority_score: number
+  generated_at: Date
   delivered_at?: Date
-  opened_at?: Date
+  user_feedback?: string
   created_at: Date
+  included_action_ids?: string[]
+}
+
+export interface IntelligenceSummary {
+  need_to_know: {
+    title: string
+    description: string
+    urgency: 'high' | 'medium' | 'low'
+    related_threads?: string[]
+  }[]
+  need_to_do: {
+    task: string
+    due: Date | null
+    priority: number
+    source: string
+    thread_id?: string
+  }[]
+  anomalies: {
+    type: string
+    description: string
+    severity: 'critical' | 'warning' | 'info'
+    recommendation: string
+    related_entity?: string
+  }[]
+  key_metrics: {
+    unread_important: number
+    pending_responses: number
+    overdue_tasks: number
+    vip_threads: number
+  }
+}
+
+export interface AutomatedAction {
+  action_type: string
+  description: string
+  executed_at: Date
+  result: 'success' | 'failed' | 'partial'
+  details?: Record<string, any>
 }
 
 export interface BriefingContent {
@@ -212,4 +255,39 @@ export interface OutlookWebhookPayload {
       "@odata.id": string
     }
   }>
+}
+
+export interface IntelligentAction {
+  id: string
+  user_id: string
+  action_type: 'draft_reply' | 'schedule_follow_up' | 'file_document' | 'create_task' | 
+               'schedule_meeting' | 'delegate_task' | 'archive_thread' | 'escalate_urgent' | 
+               'update_project' | 'send_reminder'
+  trigger_context: string
+  recommended_action: {
+    type: string
+    details: Record<string, any>
+    draft?: string
+    targetDate?: Date
+    participants?: string[]
+    folder?: string
+    taskDetails?: {
+      description: string
+      due_date?: Date
+      assigned_to?: string
+      priority?: number
+    }
+  }
+  confidence_score: number
+  urgency_level: number
+  auto_execute: boolean
+  status: 'pending' | 'approved' | 'executed' | 'rejected' | 'expired'
+  user_feedback?: string
+  executed_at?: Date
+  created_at: Date
+  expires_at: Date
+  thread_id?: string
+  contact_id?: string
+  project_name?: string
+  metadata?: Record<string, any>
 }
