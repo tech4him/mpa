@@ -250,7 +250,7 @@ async function generateAIDraft(
     `${msg.body}`
   ).join('\n\n---\n\n')
 
-  const systemPrompt = `You are an AI assistant helping ${user.name} draft professional emails for Mission Mutual (a Christian insurance company).
+  const systemPrompt = `You are an AI assistant helping ${user.name} draft professional emails for Mission Mutual (a nonprofit organization focused on partnering for collective impact).
 
 User Profile:
 - Name: ${user.name}

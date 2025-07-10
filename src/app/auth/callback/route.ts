@@ -48,7 +48,6 @@ export async function GET(req: NextRequest) {
     const response = await msalClient.acquireTokenByCode(tokenRequest)
     
     console.log('MSAL response keys:', Object.keys(response || {}))
-    console.log('Has refresh token:', !!response?.refreshToken)
     console.log('Has access token:', !!response?.accessToken)
     
     if (!response?.accessToken || !response?.account) {
@@ -86,7 +85,9 @@ export async function GET(req: NextRequest) {
     }
 
     // Encrypt refresh token
-    const refreshTokenToStore = response.refreshToken || response.accessToken
+    // Note: MSAL v3+ doesn't expose refresh tokens directly for security
+    // We'll store the access token for now and handle refresh via MSAL
+    const refreshTokenToStore = response.accessToken
     const encryptedRefreshToken = await encryptRefreshToken(refreshTokenToStore)
 
     if (existingUser) {

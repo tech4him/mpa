@@ -1,0 +1,373 @@
+import { Agent, tool } from '@openai/agents';
+import { createClient } from '@/lib/supabase/server';
+import OpenAI from 'openai';
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  organization: process.env.OPENAI_ORG_ID,
+});
+
+// Vector store for organizational knowledge
+const ORG_VECTOR_STORE_ID = process.env.OPENAI_VECTOR_STORE_ID;
+
+// Custom tool for searching project context
+const searchProjectContext = tool(async ({ query, projectName }: { query: string; projectName?: string }) => {
+    if (!ORG_VECTOR_STORE_ID) {
+      return { error: 'Vector store not configured' };
+    }
+
+    try {
+      // Search OpenAI vector store for project-related content
+      // Note: Using a mock response for now - actual vector store search requires different API
+      const response = {
+        data: [],
+        // In production, implement actual vector store search
+      };
+
+      const supabase = await createClient();
+      
+      // Get project details from database if project name provided
+      let projectData = null;
+      if (projectName) {
+        const { data } = await supabase
+          .from('project_context')
+          .select('*')
+          .eq('project_name', projectName)
+          .single();
+        projectData = data;
+      }
+
+      return {
+        vectorResults: response.data || [],
+        projectDetails: projectData,
+        relevantDocuments: response.data?.map((doc: any) => ({
+          content: doc.content,
+          filename: doc.filename,
+          score: doc.score,
+        })) || [],
+      };
+    } catch (error) {
+      console.error('Error searching project context:', error);
+      return { error: 'Failed to search project context' };
+    }
+}, {
+  name: 'searchProjectContext',
+  description: 'Search for project-related context and documents',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'Search query for project context',
+      },
+      projectName: {
+        type: 'string',
+        description: 'Optional specific project name to search within',
+      },
+    },
+    required: ['query'],
+  },
+});
+
+// Custom tool for searching relationship history
+const searchRelationshipHistory = tool(
+  async ({ contacts, timeframe }: { contacts: string[]; timeframe: string }) => {
+    const supabase = await createClient();
+    
+    try {
+      // Get relationship intelligence for the contacts
+      const { data: relationshipData } = await supabase
+        .from('relationship_intelligence')
+        .select(`
+          *,
+          contacts!inner(email, name, organization, is_vip, vip_tier)
+        `)
+        .in('contacts.email', contacts);
+
+      // Get recent email interactions
+      const { data: recentEmails } = await supabase
+        .from('email_messages')
+        .select('from_email, subject, sent_date, body')
+        .in('from_email', contacts)
+        .order('sent_date', { ascending: false })
+        .limit(10);
+
+      return {
+        relationshipData: relationshipData || [],
+        recentInteractions: recentEmails || [],
+        communicationPatterns: analyzeInteractionPatterns(recentEmails || []),
+        vipContacts: relationshipData?.filter(r => r.contacts?.is_vip) || [],
+      };
+    } catch (error) {
+      console.error('Error searching relationship history:', error);
+      return { error: 'Failed to search relationship history' };
+    }
+  },
+  {
+    name: 'searchRelationshipHistory',
+    description: 'Search for relationship history and communication patterns with contacts',
+    parameters: {
+      type: 'object',
+      properties: {
+        contacts: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of contact email addresses',
+        },
+        timeframe: {
+          type: 'string',
+          description: 'Timeframe for search (e.g., "last_6_months", "last_year")',
+        },
+      },
+      required: ['contacts', 'timeframe'],
+    },
+  }
+);
+
+// Custom tool for verifying organizational facts
+const verifyOrganizationalFacts = tool(
+  async ({ claims }: { claims: string[] }) => {
+    if (!ORG_VECTOR_STORE_ID) {
+      return { error: 'Vector store not configured' };
+    }
+
+    try {
+      const verifications = await Promise.all(
+        claims.map(async (claim) => {
+          // Mock response for now - implement actual vector store search
+          const response = {
+            data: [],
+          };
+
+          const relevantDocs = response.data || [];
+          const highConfidenceMatch = relevantDocs.find((doc: any) => doc.score > 0.8);
+
+          return {
+            claim,
+            verified: !!highConfidenceMatch,
+            evidence: relevantDocs.map((doc: any) => ({
+              content: doc.content,
+              filename: doc.filename,
+              confidence: doc.score,
+            })),
+            confidence: highConfidenceMatch?.score || 0,
+          };
+        })
+      );
+
+      return { verifications };
+    } catch (error) {
+      console.error('Error verifying facts:', error);
+      return { error: 'Failed to verify organizational facts' };
+    }
+  },
+  {
+    name: 'verifyOrganizationalFacts',
+    description: 'Verify claims against organizational knowledge base',
+    parameters: {
+      type: 'object',
+      properties: {
+        claims: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of factual claims to verify',
+        },
+      },
+      required: ['claims'],
+    },
+  }
+);
+
+// Custom tool for getting email thread context
+const getEmailThreadContext = tool(
+  async ({ threadId, userId }: { threadId: string; userId: string }) => {
+    const supabase = await createClient();
+    
+    try {
+      // Get thread details
+      const { data: thread } = await supabase
+        .from('email_threads')
+        .select('*')
+        .eq('id', threadId)
+        .eq('user_id', userId)
+        .single();
+
+      // Get all messages in thread
+      const { data: messages } = await supabase
+        .from('email_messages')
+        .select('*')
+        .eq('thread_id', threadId)
+        .order('sent_date', { ascending: true });
+
+      // Get any existing drafts
+      const { data: drafts } = await supabase
+        .from('email_drafts')
+        .select('*')
+        .eq('thread_id', threadId)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      return {
+        thread,
+        messages: messages || [],
+        existingDrafts: drafts || [],
+        threadSummary: generateThreadSummary(thread, messages || []),
+      };
+    } catch (error) {
+      console.error('Error getting thread context:', error);
+      return { error: 'Failed to get email thread context' };
+    }
+  },
+  {
+    name: 'getEmailThreadContext',
+    description: 'Get complete context for an email thread',
+    parameters: {
+      type: 'object',
+      properties: {
+        threadId: {
+          type: 'string',
+          description: 'Email thread ID',
+        },
+        userId: {
+          type: 'string',
+          description: 'User ID',
+        },
+      },
+      required: ['threadId', 'userId'],
+    },
+  }
+);
+
+// Custom tool for updating organizational memory
+const updateOrganizationalMemory = tool(
+  async ({ content, type, metadata }: { 
+    content: string; 
+    type: 'email' | 'document' | 'meeting' | 'project' | 'decision';
+    metadata: Record<string, any>;
+  }) => {
+    const supabase = await createClient();
+    
+    try {
+      // Store in database
+      const { data: record } = await supabase
+        .from('organizational_knowledge')
+        .insert({
+          document_type: type,
+          content,
+          metadata,
+          vector_store_id: ORG_VECTOR_STORE_ID,
+        })
+        .select()
+        .single();
+
+      // TODO: Add to vector store if significant
+      if (metadata.significance && metadata.significance > 0.7) {
+        // Add to OpenAI vector store
+        // This would require creating a file and uploading it
+        // await openai.beta.vectorStores.files.upload({
+        //   vector_store_id: ORG_VECTOR_STORE_ID,
+        //   file: new File([content], `${type}-${Date.now()}.txt`)
+        // });
+      }
+
+      return { success: true, recordId: record?.id };
+    } catch (error) {
+      console.error('Error updating organizational memory:', error);
+      return { error: 'Failed to update organizational memory' };
+    }
+  },
+  {
+    name: 'updateOrganizationalMemory',
+    description: 'Update the organizational knowledge base with new information',
+    parameters: {
+      type: 'object',
+      properties: {
+        content: {
+          type: 'string',
+          description: 'Content to add to organizational memory',
+        },
+        type: {
+          type: 'string',
+          enum: ['email', 'document', 'meeting', 'project', 'decision'],
+          description: 'Type of content being added',
+        },
+        metadata: {
+          type: 'object',
+          description: 'Additional metadata about the content',
+        },
+      },
+      required: ['content', 'type', 'metadata'],
+    },
+  }
+);
+
+// Create the main email processing agent
+export const emailAgent = new Agent({
+  name: 'MPA Email Assistant',
+  model: 'gpt-4o',
+  instructions: `You are an intelligent email assistant for Mission Mutual, a Christian insurance company.
+
+Your primary responsibilities:
+1. Analyze email threads with full organizational context
+2. Generate contextually appropriate responses
+3. Verify facts against organizational knowledge
+4. Maintain awareness of ongoing projects and relationships
+5. Adapt communication style based on recipient relationships
+
+Key principles:
+- Always search for relevant project context before responding
+- Verify important facts against the organizational knowledge base
+- Consider relationship history when crafting responses
+- Maintain Mission Mutual's professional Christian values
+- Be concise but thorough in analysis and responses
+- Reference specific projects, people, and past decisions when relevant
+
+When analyzing emails:
+1. First search for project context related to the email topic
+2. Look up relationship history with all participants
+3. Verify any factual claims mentioned in the email
+4. Consider the full thread context, not just the latest message
+5. Generate responses that demonstrate organizational awareness`,
+
+  tools: [
+    // OpenAI built-in tools
+    tool.fileSearch(),
+    tool.webSearch(),
+    
+    // Custom organizational tools
+    searchProjectContext,
+    searchRelationshipHistory,
+    verifyOrganizationalFacts,
+    getEmailThreadContext,
+    updateOrganizationalMemory,
+  ],
+});
+
+// Helper functions
+function analyzeInteractionPatterns(emails: any[]) {
+  if (emails.length === 0) return { frequency: 'low', recentActivity: 'none' };
+  
+  const now = new Date();
+  const recentEmails = emails.filter(email => {
+    const emailDate = new Date(email.sent_date);
+    const daysDiff = (now.getTime() - emailDate.getTime()) / (1000 * 60 * 60 * 24);
+    return daysDiff <= 30;
+  });
+
+  return {
+    frequency: recentEmails.length > 5 ? 'high' : recentEmails.length > 2 ? 'medium' : 'low',
+    recentActivity: recentEmails.length > 0 ? 'active' : 'inactive',
+    totalInteractions: emails.length,
+    recentInteractions: recentEmails.length,
+  };
+}
+
+function generateThreadSummary(thread: any, messages: any[]) {
+  if (!thread || messages.length === 0) return 'No thread data available';
+  
+  const participantCount = thread.participants?.length || 0;
+  const latestMessage = messages[messages.length - 1];
+  
+  return `Thread "${thread.subject}" with ${participantCount} participants. ${messages.length} messages total. Latest from ${latestMessage?.from_name} on ${new Date(latestMessage?.sent_date).toLocaleDateString()}.`;
+}

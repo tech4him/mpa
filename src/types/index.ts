@@ -51,6 +51,14 @@ export interface EmailMessage {
   has_draft: boolean
   processed: boolean
   created_at: Date
+  body?: string
+  subject?: string
+  from_email?: string
+  from_name?: string
+  to_recipients?: string[]
+  bcc_recipients?: string[]
+  received_at?: Date
+  content_type?: string
 }
 
 export interface EmailDraft {
@@ -149,6 +157,48 @@ export interface ThreadAnalysis {
     due_date?: string
     assigned_to?: string
   }>
+  contextSummary?: string
+  projectReferences?: string[]
+  relationshipInsights?: string
+  confidence?: number
+  organizationalContext?: any
+  projectContext?: any
+  relationshipContext?: any
+}
+
+export interface OrganizationalKnowledge {
+  id: string
+  document_type: 'email' | 'document' | 'meeting' | 'project' | 'decision'
+  content: string
+  metadata: Record<string, any>
+  vector_store_id?: string
+  project_id?: string
+  created_at: Date
+  updated_at: Date
+}
+
+export interface ProjectContext {
+  id: string
+  project_name: string
+  description?: string
+  status?: string
+  team_members?: string[]
+  key_documents?: string[]
+  timeline?: Record<string, any>
+  vector_store_id?: string
+  created_at: Date
+  updated_at: Date
+}
+
+export interface RelationshipIntelligence {
+  id: string
+  contact_id: string
+  interaction_history?: Record<string, any>
+  communication_preferences?: Record<string, any>
+  project_involvement?: string[]
+  decision_history?: Record<string, any>
+  created_at: Date
+  updated_at: Date
 }
 
 export interface OutlookWebhookPayload {

@@ -77,15 +77,40 @@ export async function PATCH(
     if (assigned_to !== undefined) updates.assigned_to = assigned_to
 
     const { data: task, error } = await supabase
-      .from('tasks')
+      .from('extracted_tasks')
       .update(updates)
       .eq('id', id)
       .eq('user_id', user.id)
-      .select()
+      .select('thread_id')
       .single()
 
     if (error) {
       return NextResponse.json({ error: 'Failed to update task' }, { status: 400 })
+    }
+
+    // If task was marked as completed, check if thread should be auto-processed
+    if (status === 'completed' && task?.thread_id) {
+      try {
+        const { EmailProcessingService } = await import('@/lib/email/processing-status')
+        const processingService = new EmailProcessingService()
+        const processingResult = await processingService.checkThreadProcessingStatus(
+          task.thread_id, 
+          user.id
+        )
+        
+        if (processingResult.isProcessed && processingResult.reason) {
+          await processingService.markThreadAsProcessed(
+            task.thread_id,
+            user.id,
+            processingResult.reason
+          )
+          
+          console.log(`Auto-processed thread ${task.thread_id} after task completion: ${processingResult.reason}`)
+        }
+      } catch (processingError) {
+        console.error('Auto-processing failed:', processingError)
+        // Don't fail the main operation
+      }
     }
 
     return NextResponse.json({

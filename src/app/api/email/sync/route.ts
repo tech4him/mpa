@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       // Return a more specific error message
       const errorMessage = syncError instanceof Error ? syncError.message : 'Unknown sync error'
       
-      if (errorMessage.includes('User token not found')) {
+      if (errorMessage.includes('User token not found') || errorMessage.includes('Authentication token expired')) {
         return NextResponse.json({
           error: 'Microsoft authentication required',
           details: 'Please sign out and sign in again to refresh your Microsoft connection',

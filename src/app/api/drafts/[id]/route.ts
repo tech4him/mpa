@@ -65,9 +65,7 @@ export async function PATCH(
     const body = await req.json()
     const { subject, content, status } = body
 
-    const updates: any = {
-      updated_at: new Date().toISOString()
-    }
+    const updates: any = {}
 
     if (subject !== undefined) updates.subject = subject
     if (content !== undefined) updates.content = content
@@ -82,7 +80,11 @@ export async function PATCH(
       .single()
 
     if (error) {
-      return NextResponse.json({ error: 'Failed to update draft' }, { status: 400 })
+      console.error('Supabase draft update error:', error)
+      return NextResponse.json({ 
+        error: 'Failed to update draft', 
+        details: error.message 
+      }, { status: 400 })
     }
 
     return NextResponse.json({

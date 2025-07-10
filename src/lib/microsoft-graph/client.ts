@@ -31,13 +31,14 @@ export async function getAppOnlyToken() {
   return result.accessToken
 }
 
-export async function refreshUserToken(existingToken: string) {
-  // Since we don't get refresh tokens in server-side flow,
-  // we'll return the existing access token and handle expiry in the sync service
-  console.log('Using existing access token (no refresh token available)')
+export async function refreshUserToken(storedToken: string) {
+  // In server-side flow, we don't get refresh tokens
+  // The stored token is actually the access token from the initial auth
+  // We need to check if it's still valid or prompt for re-authentication
   
-  return {
-    accessToken: existingToken,
-    refreshToken: existingToken,
-  }
+  console.log('Note: Server-side flow does not support refresh tokens')
+  
+  // For now, we'll return an error to prompt re-authentication
+  // In a production app, you'd implement a token cache or use a different flow
+  throw new Error('Token refresh not supported in server-side flow. Please re-authenticate.')
 }

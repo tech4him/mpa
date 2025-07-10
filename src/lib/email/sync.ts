@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getGraphClient, refreshUserToken } from '@/lib/microsoft-graph/client'
+import { VectorStoreService } from '@/lib/vector-store/service'
+import { EmailClassificationProcessor } from '@/lib/agents/email-classifier'
 import crypto from 'crypto'
 
 interface EmailMessage {
@@ -61,6 +63,14 @@ interface EmailThread {
 }
 
 export class EmailSyncService {
+  private vectorStoreService: VectorStoreService
+  private classificationProcessor: EmailClassificationProcessor
+
+  constructor() {
+    this.vectorStoreService = new VectorStoreService()
+    this.classificationProcessor = new EmailClassificationProcessor()
+  }
+
   private async getSupabase() {
     return await createClient()
   }
@@ -80,23 +90,96 @@ export class EmailSyncService {
         throw new Error('User token not found')
       }
 
-      // Decrypt refresh token
-      let refreshToken: string
-      try {
-        refreshToken = await this.decryptRefreshToken(user.encrypted_refresh_token)
-      } catch (error) {
-        console.error('Failed to decrypt refresh token:', error)
-        throw new Error('Invalid or corrupted refresh token. Please re-authenticate.')
-      }
-
-      // Get fresh access token
+      // Decrypt stored token (which is actually an access token, not refresh token)
       let accessToken: string
       try {
-        const tokenResult = await refreshUserToken(refreshToken)
-        accessToken = tokenResult.accessToken
+        accessToken = await this.decryptRefreshToken(user.encrypted_refresh_token)
+        console.log('Decrypted stored access token')
       } catch (error) {
-        console.error('Token refresh failed:', error)
-        throw new Error('Authentication expired. Please sign in again.')
+        console.error('Failed to decrypt token:', error)
+        throw new Error('Invalid or corrupted token. Please re-authenticate.')
+      }
+
+      // Note: In server-side flow, we can't refresh tokens
+      // The stored token is the access token from initial auth
+      // If it's expired, user needs to re-authenticate
+      console.log('Using stored access token (refresh not available in server-side flow)')
+      // Store the access token temporarily (encrypted) for mailbox operations
+      try {
+        const encryptedAccessToken = await this.encryptToken(accessToken)
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour expiry
+        
+        console.log('Attempting to store access token:', {
+          userId,
+          email: user.email,
+          expiresAt: expiresAt.toISOString(),
+          hasEncryptedToken: !!encryptedAccessToken
+        })
+        
+        // First check if email account exists
+        const { data: existingAccount } = await supabase
+          .from('email_accounts')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('email_address', user.email)
+          .single()
+
+        let upsertResult, upsertError
+        
+        if (existingAccount) {
+          // Update existing account
+          const { data, error } = await supabase
+            .from('email_accounts')
+            .update({
+              encrypted_access_token: encryptedAccessToken,
+              access_token_expires_at: expiresAt.toISOString(),
+              last_sync: new Date().toISOString()
+            })
+            .eq('id', existingAccount.id)
+            .select()
+          
+          upsertResult = data
+          upsertError = error
+        } else {
+          // Insert new account
+          const { data, error } = await supabase
+            .from('email_accounts')
+            .insert({
+              user_id: userId,
+              email_address: user.email,
+              encrypted_access_token: encryptedAccessToken,
+              access_token_expires_at: expiresAt.toISOString(),
+              webhook_secret: crypto.randomBytes(32).toString('hex'),
+              last_sync: new Date().toISOString()
+            })
+            .select()
+          
+          upsertResult = data
+          upsertError = error
+        }
+        
+        if (upsertError) {
+          console.error('Upsert error:', upsertError)
+          throw upsertError
+        }
+        
+        console.log('Successfully stored access token for mailbox operations:', upsertResult)
+      } catch (error) {
+        console.error('Failed to store access token:', error)
+        // Continue with sync even if storage fails
+      }
+
+      // Test the access token before storing it
+      try {
+        const testClient = await getGraphClient(accessToken)
+        const testResponse = await testClient.api('/me').select('id,mail').get()
+        console.log('Access token test successful:', { 
+          userId: testResponse.id, 
+          email: testResponse.mail 
+        })
+      } catch (error) {
+        console.error('Access token test failed:', error)
+        throw new Error('Access token is invalid or expired. Please re-authenticate.')
       }
 
       // Initialize Graph client
@@ -150,6 +233,13 @@ export class EmailSyncService {
       await this.processMessages(supabase, userId, messages)
       console.log('Finished processing messages')
 
+      // Auto-process threads after sync
+      console.log('Running auto-processing for completed threads...')
+      const { EmailProcessingService } = await import('./processing-status')
+      const processingService = new EmailProcessingService()
+      const processedCount = await processingService.autoProcessThreads(userId)
+      console.log(`Auto-processed ${processedCount} threads`)
+
       // Update last sync timestamp
       await supabase
         .from('email_accounts')
@@ -158,17 +248,36 @@ export class EmailSyncService {
           sync_status: 'completed'
         })
         .eq('user_id', userId)
+        .eq('email_address', user.email)
 
-      return { success: true, messageCount: messages.length }
-    } catch (error) {
+      return { success: true, messageCount: messages.length, processedCount }
+    } catch (error: any) {
       console.error('Email sync error:', error)
       
       // Update sync status to failed
       const supabase = await this.getSupabase()
-      await supabase
-        .from('email_accounts')
-        .update({ sync_status: 'failed' })
-        .eq('user_id', userId)
+      
+      // Get user email for the update
+      const { data: userData } = await supabase
+        .from('users')
+        .select('email')
+        .eq('id', userId)
+        .single()
+
+      if (userData?.email) {
+        await supabase
+          .from('email_accounts')
+          .update({ sync_status: 'failed' })
+          .eq('user_id', userId)
+          .eq('email_address', userData.email)
+      }
+
+      // Check if it's an authentication error
+      if (error?.statusCode === 401 || error?.message?.includes('401') || 
+          error?.message?.includes('token') || error?.message?.includes('expired') ||
+          error?.message?.includes('Authentication')) {
+        throw new Error('Authentication expired. Please sign in again to refresh your access.')
+      }
 
       throw error
     }
@@ -236,21 +345,32 @@ export class EmailSyncService {
         }
 
         // Find or create thread
-        const thread = await this.findOrCreateThread(supabase, userId, message)
-        
-        if (!thread || !thread.id) {
-          console.error('Failed to create thread for message:', message.id)
+        try {
+          const thread = await this.findOrCreateThread(supabase, userId, message)
+          
+          if (!thread || !thread.id) {
+            console.error('Failed to create thread for message:', message.id)
+            continue
+          }
+
+          // Store message
+          await this.storeMessage(supabase, userId, thread.id, message)
+
+          // Update thread with latest message info
+          await this.updateThread(supabase, thread.id, message)
+
+          // Extract and store contacts
+          await this.extractAndStoreContacts(supabase, userId, message)
+
+          // Classify email for business relevance
+          const classification = await this.classifyEmailForRelevance(message, thread.id, userId)
+
+          // Upload relevant emails to vector store for organizational knowledge
+          await this.uploadToVectorStoreIfRelevant(message, thread.id, userId, classification)
+        } catch (threadError) {
+          console.error(`Error creating/processing thread for message ${message.id}:`, threadError)
           continue
         }
-
-        // Store message
-        await this.storeMessage(supabase, userId, thread.id, message)
-
-        // Update thread with latest message info
-        await this.updateThread(supabase, thread.id, message)
-
-        // Extract and store contacts
-        await this.extractAndStoreContacts(supabase, userId, message)
 
       } catch (error) {
         console.error(`Error processing message ${message.id}:`, error)
@@ -310,14 +430,14 @@ export class EmailSyncService {
 
       if (error) {
         console.error('Error creating thread:', error)
-        return null
+        throw new Error('Failed to create thread')
       }
 
       console.log('Created new thread:', newThread?.id)
       return newThread!
     } catch (error) {
       console.error('Error in findOrCreateThread:', error)
-      return null
+      throw error
     }
   }
 
@@ -539,6 +659,96 @@ export class EmailSyncService {
     return email
   }
 
+  private async uploadToVectorStoreIfRelevant(
+    message: EmailMessage, 
+    threadId: string, 
+    userId: string,
+    classification: any
+  ) {
+    try {
+      const category = this.categorizeEmail(message)
+      const priority = this.determinePriority(message) === 1 ? 'high' : 'medium'
+      
+      const emailDocument = {
+        id: message.id,
+        subject: message.subject || '',
+        content: message.body?.content || '',
+        sender: message.from?.emailAddress?.address || '',
+        recipients: message.toRecipients?.map(r => r?.emailAddress?.address).filter(Boolean) || [],
+        date: message.receivedDateTime,
+        category,
+        priority,
+        threadId,
+      }
+
+      // Check if this email should be uploaded to vector store based on classification
+      const shouldUpload = await this.vectorStoreService.shouldUploadEmail(emailDocument, classification)
+      
+      if (shouldUpload) {
+        console.log(`📚 Uploading business-relevant email ${message.id} to vector store (category: ${classification.category}, context: ${classification.business_context})`)
+        const result = await this.vectorStoreService.uploadEmailToVectorStore(emailDocument, userId)
+        
+        if (result.success) {
+          console.log(`✅ Successfully uploaded email ${message.id} to vector store with record ID: ${result.recordId}`)
+        } else {
+          console.error(`❌ Failed to upload email ${message.id} to vector store:`, result.error)
+        }
+      } else {
+        console.log(`⏩ Skipping email ${message.id} - classified as ${classification.category} (not relevant for vector store)`)
+      }
+    } catch (error) {
+      console.error(`Error uploading email ${message.id} to vector store:`, error)
+    }
+  }
+
+  private async classifyEmailForRelevance(
+    message: EmailMessage,
+    threadId: string,
+    userId: string
+  ): Promise<any> {
+    try {
+      const emailContext = {
+        id: message.id,
+        subject: message.subject || '',
+        sender: message.from?.emailAddress?.address || '',
+        recipients: message.toRecipients?.map(r => r?.emailAddress?.address).filter(Boolean) || [],
+        body: message.body?.content || '',
+        threadId,
+      };
+
+      console.log(`🔍 Classifying email ${message.id} for business relevance`);
+      
+      const classification = await this.classificationProcessor.classifyEmail(emailContext, userId);
+      
+      console.log(`🔍 Classification complete: ${classification.category} (${classification.businessContext}) - Relevant: ${classification.isRelevant}, Index: ${classification.shouldIndex}`);
+      
+      // Update email with classification information
+      const supabase = await this.getSupabase();
+      // Note: We'll link classification via email_id, not store classification_id
+      // This avoids the type error and maintains proper referential integrity
+
+      // Handle automatic actions based on classification
+      if (classification.shouldArchive) {
+        await this.classificationProcessor.handleEmailAction(message.id, 'archive', userId);
+        console.log(`📁 Auto-archived email ${message.id} (${classification.category})`);
+      }
+      
+      return classification;
+    } catch (error) {
+      console.error(`Email classification failed for email ${message.id}:`, error);
+      // Return default classification that allows processing
+      return {
+        isRelevant: true,
+        category: 'BUSINESS_RELEVANT',
+        businessContext: 'EXTERNAL',
+        shouldIndex: false,
+        shouldArchive: false,
+        reasoning: 'Error in classification - defaulting to manual review',
+        confidence: 0.1,
+      };
+    }
+  }
+
   private async decryptRefreshToken(encryptedToken: string): Promise<string> {
     const key = Buffer.from(process.env.ENCRYPTION_KEY!, 'hex')
     const [ivHex, authTagHex, encrypted] = encryptedToken.split(':')
@@ -553,5 +763,19 @@ export class EmailSyncService {
     decrypted += decipher.final('utf8')
     
     return decrypted
+  }
+
+  private async encryptToken(token: string): Promise<string> {
+    const key = Buffer.from(process.env.ENCRYPTION_KEY!, 'hex')
+    const iv = crypto.randomBytes(16)
+    
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
+    
+    let encrypted = cipher.update(token, 'utf8', 'hex')
+    encrypted += cipher.final('hex')
+    
+    const authTag = cipher.getAuthTag()
+    
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`
   }
 }

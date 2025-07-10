@@ -19,7 +19,10 @@ import {
   Target,
   MessageSquare,
   Calendar,
-  User
+  User,
+  Copy,
+  ExternalLink,
+  Mail
 } from 'lucide-react'
 
 interface AIDraft {
@@ -29,7 +32,7 @@ interface AIDraft {
   confidence: number
   reasoning: string
   draft_type: 'reply' | 'forward' | 'new'
-  status: 'pending_review' | 'approved' | 'rejected' | 'sent'
+  status: 'pending_review' | 'approved' | 'rejected' | 'sent' | 'in_mailbox'
   created_at: string
 }
 
@@ -43,6 +46,7 @@ interface ExtractedTask {
 }
 
 interface AIRecommendation {
+  id?: string
   type: 'draft_reply' | 'schedule_meeting' | 'create_task' | 'delegate' | 'archive'
   title: string
   description: string
@@ -61,6 +65,8 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
   const [recommendations, setRecommendations] = useState<AIRecommendation[]>([])
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
+  const [editingDraft, setEditingDraft] = useState<string | null>(null)
+  const [editedContent, setEditedContent] = useState('')
 
   // Load AI insights for this thread
   useEffect(() => {
@@ -74,7 +80,11 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
       const draftsResponse = await fetch(`/api/drafts?threadId=${threadId}`)
       if (draftsResponse.ok) {
         const draftsData = await draftsResponse.json()
-        setDrafts(draftsData)
+        console.log('Drafts API response:', draftsData)
+        // The API returns the array directly, not wrapped in a drafts property
+        setDrafts(Array.isArray(draftsData) ? draftsData : [])
+      } else {
+        console.error('Drafts API failed:', draftsResponse.status, await draftsResponse.text())
       }
 
       // Load extracted tasks
@@ -111,7 +121,21 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
       })
 
       if (response.ok) {
-        const newDraft = await response.json()
+        const apiResponse = await response.json()
+        
+        // Transform API response to match AIDraft interface
+        const draftData = apiResponse.draft || apiResponse
+        const newDraft: AIDraft = {
+          id: draftData.id,
+          subject: draftData.subject || 'No Subject',
+          content: draftData.content || 'No content',
+          confidence: draftData.confidence || 0,
+          reasoning: draftData.reasoning || 'No reasoning provided',
+          draft_type: draftType,
+          status: 'pending_review',
+          created_at: new Date().toISOString()
+        }
+        
         setDrafts(prev => [newDraft, ...prev])
         setActiveTab('drafts')
       }
@@ -141,6 +165,127 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
     }
   }
 
+  const copyDraftToClipboard = async (draft: AIDraft) => {
+    try {
+      // Convert HTML to plain text for clipboard
+      const tempDiv = document.createElement('div')
+      tempDiv.innerHTML = draft.content
+      const plainText = tempDiv.textContent || tempDiv.innerText || ''
+      
+      await navigator.clipboard.writeText(plainText)
+      
+      // You could add a toast notification here
+      console.log('Draft copied to clipboard')
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error)
+    }
+  }
+
+  const openInEmailClient = (draft: AIDraft) => {
+    // Get thread participants for recipients
+    const recipients = draft.subject?.includes('Re:') ? 
+      [] : // For replies, we'd need to get original sender
+      ['recipient@example.com'] // Placeholder
+
+    // Create mailto URL
+    const subject = encodeURIComponent(draft.subject || 'Email Draft')
+    const body = encodeURIComponent(draft.content.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' '))
+    const to = recipients.join(',')
+    
+    const mailtoUrl = `mailto:${to}?subject=${subject}&body=${body}`
+    window.open(mailtoUrl, '_blank')
+  }
+
+  const createDraftInMailbox = async (draft: AIDraft) => {
+    try {
+      const response = await fetch(`/api/drafts/${draft.id}/mailbox`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_draft',
+          organizeFolders: true
+        })
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        // Update draft status
+        setDrafts(prev => prev.map(d => 
+          d.id === draft.id ? { ...d, status: 'in_mailbox' } : d
+        ))
+        
+        // Create positive learning sample
+        await fetch('/api/learning/samples', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            original_draft: draft.content,
+            final_sent: draft.content,
+            feedback_score: 1,
+            edit_type: 'approved_to_mailbox',
+            thread_id: threadId
+          })
+        })
+        
+        console.log('Draft created in mailbox:', result.message)
+        alert('Draft successfully created in your AI Assistant Drafts folder!')
+      } else {
+        // Handle sync requirement
+        if (result.requiresSync) {
+          const confirmMessage = result.error + '\n\nThis will redirect you to the dashboard where you can click "Sync Emails". Continue?'
+          if (confirm(confirmMessage)) {
+            window.location.href = '/dashboard'
+          }
+        } else {
+          alert('Error: ' + result.error)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to create draft in mailbox:', error)
+      alert('Failed to create draft in mailbox. Please try again.')
+    }
+  }
+
+  const sendDraftViaAPI = async (draft: AIDraft) => {
+    try {
+      const response = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          threadId,
+          draftId: draft.id,
+          subject: draft.subject,
+          content: draft.content
+        })
+      })
+
+      if (response.ok) {
+        // Update draft status to sent
+        setDrafts(prev => prev.map(d => 
+          d.id === draft.id ? { ...d, status: 'sent' } : d
+        ))
+        
+        // Create positive learning sample
+        await fetch('/api/learning/samples', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            original_draft: draft.content,
+            final_sent: draft.content,
+            feedback_score: 1,
+            edit_type: 'approved_and_sent',
+            thread_id: threadId
+          })
+        })
+        
+        console.log('Draft sent successfully')
+      }
+    } catch (error) {
+      console.error('Failed to send draft:', error)
+    }
+  }
+
   const rejectDraft = async (draftId: string) => {
     try {
       const response = await fetch(`/api/drafts/${draftId}`, {
@@ -157,6 +302,66 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
       }
     } catch (error) {
       console.error('Failed to reject draft:', error)
+    }
+  }
+
+  const startEditing = (draft: AIDraft) => {
+    setEditingDraft(draft.id)
+    // Strip HTML tags for editing, but preserve line breaks
+    const strippedContent = draft.content
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<p[^>]*>/gi, '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .trim()
+    setEditedContent(strippedContent)
+  }
+
+  const cancelEditing = () => {
+    setEditingDraft(null)
+    setEditedContent('')
+  }
+
+  const saveDraftEdit = async (draftId: string) => {
+    try {
+      const response = await fetch(`/api/drafts/${draftId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          content: editedContent,
+          status: 'pending_review' // Reset to pending after edit
+        })
+      })
+
+      if (response.ok) {
+        // Update local state
+        setDrafts(prev => prev.map(draft => 
+          draft.id === draftId ? { ...draft, content: editedContent } : draft
+        ))
+        
+        // Create learning sample for AI improvement
+        const originalDraft = drafts.find(d => d.id === draftId)
+        if (originalDraft && originalDraft.content !== editedContent) {
+          await fetch('/api/learning/samples', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              original_draft: originalDraft.content,
+              final_sent: editedContent,
+              feedback_score: 1, // Positive because user edited to improve
+              edit_type: 'manual_improvement',
+              thread_id: threadId
+            })
+          })
+        }
+        
+        setEditingDraft(null)
+        setEditedContent('')
+        onAction?.('draft_edited', { draftId, originalContent: originalDraft?.content, editedContent })
+      }
+    } catch (error) {
+      console.error('Failed to save draft edit:', error)
     }
   }
 
@@ -182,7 +387,7 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
     }
   }
 
-  const updateTaskStatus = async (taskId: string, status: string) => {
+  const updateTaskStatus = async (taskId: string, status: 'pending' | 'completed' | 'in_progress') => {
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
@@ -230,15 +435,15 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
   }
 
   const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.8) return 'text-green-600'
-    if (confidence >= 0.6) return 'text-yellow-600'
-    return 'text-red-600'
+    if (confidence >= 0.8) return 'text-green-600 dark:text-green-400'
+    if (confidence >= 0.6) return 'text-yellow-600 dark:text-yellow-400'
+    return 'text-red-600 dark:text-red-400'
   }
 
   const getConfidenceBadgeColor = (confidence: number) => {
-    if (confidence >= 0.8) return 'text-green-600 bg-green-50'
-    if (confidence >= 0.6) return 'text-yellow-600 bg-yellow-50'
-    return 'text-red-600 bg-red-50'
+    if (confidence >= 0.8) return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+    if (confidence >= 0.6) return 'text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20'
+    return 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20'
   }
 
   return (
@@ -347,9 +552,9 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
             {drafts.length === 0 ? (
               <Card>
                 <CardContent className="text-center py-8">
-                  <MessageSquare className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600">No AI drafts generated yet</p>
-                  <p className="text-sm text-gray-500 mt-2">
+                  <MessageSquare className="h-12 w-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+                  <p className="text-gray-700 dark:text-gray-300">No AI drafts generated yet</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
                     Click "Draft Reply" to generate an AI-powered response
                   </p>
                 </CardContent>
@@ -360,43 +565,75 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div>
-                        <CardTitle className="text-lg">{draft.subject}</CardTitle>
+                        <CardTitle className="text-lg">{draft.subject || 'No Subject'}</CardTitle>
                         <div className="flex items-center space-x-2 mt-2">
                           <Badge variant="outline" className="capitalize">
-                            {draft.draft_type}
+                            {draft.draft_type || 'unknown'}
                           </Badge>
                           <Badge 
                             variant="outline" 
                             className={getConfidenceColor(draft.confidence)}
                           >
-                            {Math.round(draft.confidence * 100)}% confident
+                            {Math.round((draft.confidence || 0) * 100)}% confident
                           </Badge>
                           <Badge 
                             variant={draft.status === 'approved' ? 'default' : 'outline'}
                             className="capitalize"
                           >
-                            {draft.status.replace('_', ' ')}
+                            {draft.status?.replace('_', ' ') || 'Unknown'}
                           </Badge>
                         </div>
                       </div>
                       <div className="text-sm text-gray-500">
-                        {new Date(draft.created_at).toLocaleString()}
+                        {draft.created_at ? new Date(draft.created_at).toLocaleString() : 'Unknown date'}
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
                       <div>
-                        <p className="text-sm font-medium text-gray-700 mb-2">AI Reasoning:</p>
-                        <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
-                          {draft.reasoning}
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">AI Reasoning:</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-3 rounded">
+                          {draft.reasoning || 'No reasoning provided'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-gray-700 mb-2">Draft Content:</p>
-                        <div className="bg-white border rounded p-4 max-h-48 overflow-y-auto">
-                          <pre className="whitespace-pre-wrap text-sm">{draft.content}</pre>
-                        </div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Draft Content:</p>
+                        {editingDraft === draft.id ? (
+                          <div className="space-y-3">
+                            <textarea
+                              value={editedContent}
+                              onChange={(e) => setEditedContent(e.target.value)}
+                              className="w-full h-32 p-3 border border-gray-300 dark:border-gray-600 rounded resize-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+                              placeholder="Edit your draft content..."
+                            />
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                onClick={() => saveDraftEdit(draft.id)}
+                                size="sm"
+                                className="flex items-center space-x-1"
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                                <span>Save Changes</span>
+                              </Button>
+                              <Button
+                                onClick={cancelEditing}
+                                size="sm"
+                                variant="outline"
+                                className="flex items-center space-x-1"
+                              >
+                                <span>Cancel</span>
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded p-4 max-h-48 overflow-y-auto">
+                            <div 
+                              className="text-sm text-gray-900 dark:text-gray-100 prose prose-sm max-w-none"
+                              dangerouslySetInnerHTML={{ __html: draft.content || 'No content' }}
+                            />
+                          </div>
+                        )}
                       </div>
                       {draft.status === 'pending_review' && (
                         <div className="flex items-center space-x-2">
@@ -418,6 +655,7 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
                             <span>Reject</span>
                           </Button>
                           <Button
+                            onClick={() => startEditing(draft)}
                             size="sm"
                             variant="outline"
                             className="flex items-center space-x-1"
@@ -425,6 +663,69 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
                             <Edit3 className="h-4 w-4" />
                             <span>Edit</span>
                           </Button>
+                        </div>
+                      )}
+                      
+                      {draft.status === 'approved' && (
+                        <div className="space-y-3">
+                          <div className="text-sm text-green-600 dark:text-green-400 font-medium">
+                            ✅ Draft Approved - Choose an action:
+                          </div>
+                          <div className="flex items-center space-x-2 flex-wrap gap-2">
+                            <Button
+                              onClick={() => createDraftInMailbox(draft)}
+                              size="sm"
+                              className="flex items-center space-x-1"
+                            >
+                              <Mail className="h-4 w-4" />
+                              <span>Create in Mailbox</span>
+                            </Button>
+                            <Button
+                              onClick={() => copyDraftToClipboard(draft)}
+                              size="sm"
+                              variant="outline"
+                              className="flex items-center space-x-1"
+                            >
+                              <Copy className="h-4 w-4" />
+                              <span>Copy to Clipboard</span>
+                            </Button>
+                            <Button
+                              onClick={() => openInEmailClient(draft)}
+                              size="sm"
+                              variant="outline"
+                              className="flex items-center space-x-1"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                              <span>Open in Email Client</span>
+                            </Button>
+                            <Button
+                              onClick={() => sendDraftViaAPI(draft)}
+                              size="sm"
+                              variant="outline"
+                              className="flex items-center space-x-1"
+                            >
+                              <Send className="h-4 w-4" />
+                              <span>Send Now</span>
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {draft.status === 'in_mailbox' && (
+                        <div className="text-sm text-blue-600 dark:text-blue-400 font-medium">
+                          📬 Ready in AI Assistant Drafts folder
+                        </div>
+                      )}
+                      
+                      {draft.status === 'sent' && (
+                        <div className="text-sm text-blue-600 dark:text-blue-400 font-medium">
+                          📧 Sent successfully
+                        </div>
+                      )}
+                      
+                      {draft.status === 'rejected' && (
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                          ❌ Draft rejected
                         </div>
                       )}
                     </div>
@@ -441,9 +742,9 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
             {tasks.length === 0 ? (
               <Card>
                 <CardContent className="text-center py-8">
-                  <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600">No tasks extracted yet</p>
-                  <p className="text-sm text-gray-500 mt-2">
+                  <Target className="h-12 w-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+                  <p className="text-gray-700 dark:text-gray-300">No tasks extracted yet</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
                     Click "Extract Tasks" to find action items in this thread
                   </p>
                 </CardContent>
@@ -454,22 +755,22 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <h3 className="font-medium">{task.task_description}</h3>
+                        <h3 className="font-medium">{task.task_description || 'No description'}</h3>
                         <div className="flex items-center space-x-2 mt-2">
                           <Badge 
                             variant="outline" 
-                            className={getConfidenceBadgeColor(task.confidence)}
+                            className={getConfidenceBadgeColor(task.confidence || 0)}
                           >
-                            {Math.round(task.confidence * 100)}% confident
+                            {Math.round((task.confidence || 0) * 100)}% confident
                           </Badge>
                           <Badge variant="outline" className="capitalize">
-                            {task.status}
+                            {task.status || 'unknown'}
                           </Badge>
                         </div>
                         {task.assigned_to && (
                           <div className="flex items-center space-x-1 mt-2 text-sm text-gray-500">
                             <User className="h-4 w-4" />
-                            <span>Assigned to: {task.assigned_to}</span>
+                            <span>Assigned to: {task.assigned_to || 'Unknown'}</span>
                           </div>
                         )}
                         {task.due_date && (
@@ -519,17 +820,17 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
               </Card>
             ) : (
               recommendations.map((recommendation, index) => (
-                <Card key={index}>
+                <Card key={recommendation.id || `${recommendation.type}-${recommendation.title}-${index}`}>
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <h3 className="font-medium">{recommendation.title}</h3>
-                        <p className="text-sm text-gray-600 mt-1">{recommendation.description}</p>
+                        <h3 className="font-medium">{recommendation.title || 'No title'}</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{recommendation.description || 'No description'}</p>
                         <Badge 
                           variant="outline" 
-                          className={`mt-2 ${getConfidenceColor(recommendation.confidence)}`}
+                          className={`mt-2 ${getConfidenceColor(recommendation.confidence || 0)}`}
                         >
-                          {Math.round(recommendation.confidence * 100)}% recommended
+                          {Math.round((recommendation.confidence || 0) * 100)}% recommended
                         </Badge>
                       </div>
                       <Button

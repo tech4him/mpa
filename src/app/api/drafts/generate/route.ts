@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateDraft } from '@/lib/ai/draft-generator'
+import { generateDraftWithAgent, generateDraftWithLearning } from '@/lib/agents/draft-generator-agent'
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,15 +36,42 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
     }
 
-    // Generate draft
-    const draft = await generateDraft({
-      threadId,
-      userId: user.id,
-      draftType,
-      context,
-      urgency,
-      recipientRelationship
-    })
+    // Generate draft using agent-based approach
+    const useAgent = process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'dummy-key'
+    const useLearning = body.enableLearning === true
+    
+    let draft
+    if (useAgent) {
+      if (useLearning) {
+        draft = await generateDraftWithLearning({
+          threadId,
+          userId: user.id,
+          draftType,
+          context,
+          urgency,
+          recipientRelationship
+        })
+      } else {
+        draft = await generateDraftWithAgent({
+          threadId,
+          userId: user.id,
+          draftType,
+          context,
+          urgency,
+          recipientRelationship
+        })
+      }
+    } else {
+      // Fallback to original implementation
+      draft = await generateDraft({
+        threadId,
+        userId: user.id,
+        draftType,
+        context,
+        urgency,
+        recipientRelationship
+      })
+    }
 
     return NextResponse.json({
       success: true,

@@ -40,9 +40,11 @@ Transform email from a time sink into a strategic advantage by creating an AI as
 
 #### 2. Context-Aware Response Drafting
 - **Thread-Based Drafts**: Consider entire conversation when drafting
+- **Organizational Context**: Reference project documents, past decisions, and relationships
 - **Personality Learning**: Analyze last 90 days of sent emails for tone/style
 - **Recipient-Specific Adaptation**: Different tone for donors vs. team
 - **Edit Tracking**: Learn from changes user makes to drafts
+- **Fact Verification**: Cross-reference claims against organizational knowledge base
 
 #### 3. Daily Intelligence Briefing
 - **7 AM Daily Email**: Comprehensive overview of email state
@@ -123,10 +125,10 @@ Transform email from a time sink into a strategic advantage by creating an AI as
                             │   (QStash)          │
                             └──────────┬──────────┘
                                        │
-┌─────────────────────┐     ┌──────────▼──────────┐
-│   Web Dashboard     │────▶│   Core Processing   │
-│   (Next.js)         │     │   (Vercel Functions)│
-└─────────────────────┘     └──────────┬──────────┘
+┌─────────────────────┐     ┌──────────▼──────────┐     ┌─────────────────────┐
+│   Web Dashboard     │────▶│   Agent Orchestrator│────▶│  OpenAI Vector Store│
+│   (Next.js)         │     │   (OpenAI Agents)   │     │  (Org Knowledge)    │
+└─────────────────────┘     └──────────┬──────────┘     └─────────────────────┘
                                        │
                             ┌──────────▼──────────┐
                             │   Data Layer        │
@@ -139,10 +141,11 @@ Transform email from a time sink into a strategic advantage by creating an AI as
 - **Backend**: Vercel Edge Functions, Node.js
 - **Database**: Supabase (PostgreSQL)
 - **Queue**: Upstash QStash
-- **AI**: OpenAI GPT-4o API
+- **AI**: OpenAI Agents SDK with GPT-4o
+- **Vector Store**: OpenAI Vector Store API for organizational knowledge
 - **Email**: Microsoft Graph API v1.0
 - **Authentication**: Supabase Auth with Azure AD SSO
-- **Monitoring**: Vercel Analytics, Sentry
+- **Monitoring**: Vercel Analytics, Sentry, OpenAI Tracing
 
 ### 2. Database Schema
 
@@ -278,12 +281,50 @@ CREATE TABLE daily_briefings (
   UNIQUE(user_id, briefing_date)
 );
 
+-- Organizational knowledge and context
+CREATE TABLE organizational_knowledge (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_type TEXT NOT NULL, -- 'email', 'document', 'meeting', 'project', 'decision'
+  content TEXT NOT NULL,
+  metadata JSONB DEFAULT '{}',
+  vector_store_id TEXT, -- OpenAI vector store reference
+  project_id UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Project context for RAG
+CREATE TABLE project_context (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_name TEXT NOT NULL,
+  description TEXT,
+  status TEXT,
+  team_members TEXT[],
+  key_documents TEXT[],
+  timeline JSONB,
+  vector_store_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Relationship intelligence
+CREATE TABLE relationship_intelligence (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_id UUID REFERENCES contacts(id),
+  interaction_history JSONB,
+  communication_preferences JSONB,
+  project_involvement TEXT[],
+  decision_history JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Create indexes for performance
 CREATE INDEX idx_threads_user_date ON email_threads(user_id, last_message_date DESC);
 CREATE INDEX idx_messages_thread ON email_messages(thread_id, sent_date DESC);
 CREATE INDEX idx_drafts_status ON email_drafts(user_id, status, created_at DESC);
 CREATE INDEX idx_contacts_email ON contacts(user_id, email);
 CREATE INDEX idx_learning_user_date ON learning_samples(user_id, created_at DESC);
+CREATE INDEX idx_org_knowledge_type ON organizational_knowledge(document_type, created_at DESC);
+CREATE INDEX idx_project_context_name ON project_context(project_name);
 
 -- Enable Row Level Security
 ALTER TABLE email_threads ENABLE ROW LEVEL SECURITY;
@@ -357,8 +398,32 @@ POST   /api/tasks/:taskId/export-clickup
 
 ### 4. Core Processing Logic
 
-#### 4.1 Email Processing Pipeline
+#### 4.1 Agent-Based Email Processing
 ```typescript
+import { Agent, tool } from '@openai/agents';
+
+// Configure main email processing agent
+const emailAgent = new Agent({
+  name: 'MPA Email Assistant',
+  model: 'gpt-4o',
+  instructions: `You are an intelligent email assistant for Mission Mutual.
+    Always verify facts against organizational knowledge.
+    Reference specific projects, people, and past decisions.
+    Maintain consistent communication style based on recipient.`,
+  tools: [
+    // OpenAI built-in tools
+    tool.fileSearch(),
+    tool.webSearch(),
+    
+    // Custom organizational tools
+    tool(searchProjectContext),
+    tool(searchRelationshipHistory),
+    tool(verifyOrganizationalFacts),
+    tool(getEmailThreadContext),
+    tool(updateOrganizationalMemory)
+  ]
+});
+
 interface EmailProcessor {
   // Step 1: Receive webhook
   async handleWebhook(payload: OutlookWebhookPayload): Promise<void> {
@@ -391,25 +456,128 @@ interface EmailProcessor {
     }
   }
 
-  // Step 4: Smart thread analysis
+  // Step 4: Context-aware thread analysis
   async analyzeThread(thread: EmailThread): Promise<ThreadAnalysis> {
-    const prompt = buildThreadPrompt(thread);
-    const analysis = await openai.createCompletion({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: THREAD_ANALYSIS_PROMPT },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.3,
-      response_format: { type: "json_object" }
+    // Gather organizational context
+    const context = await this.gatherContext(thread);
+    
+    // Use agent to analyze with full context
+    const response = await emailAgent.run({
+      messages: [{
+        role: 'user',
+        content: `Analyze this email thread and determine required actions.
+          
+          Thread: ${JSON.stringify(thread)}
+          
+          Use the available tools to:
+          1. Search for related project context
+          2. Find relationship history with participants
+          3. Verify any factual claims
+          4. Determine if this relates to ongoing initiatives`
+      }]
     });
     
-    return parseAnalysis(analysis);
+    return parseAnalysis(response);
+  }
+  
+  // Gather relevant organizational context
+  async gatherContext(thread: EmailThread): Promise<OrganizationalContext> {
+    const [projectContext, relationshipData, recentDecisions] = await Promise.all([
+      searchProjectContext({ 
+        query: thread.subject,
+        participants: thread.participants 
+      }),
+      searchRelationshipHistory({ 
+        contacts: thread.participants,
+        timeframe: 'last_6_months' 
+      }),
+      searchOrganizationalKnowledge({
+        type: 'decision',
+        relatedTo: extractKeyTerms(thread)
+      })
+    ]);
+    
+    return {
+      projects: projectContext,
+      relationships: relationshipData,
+      decisions: recentDecisions
+    };
   }
 }
 ```
 
-#### 4.2 Learning System
+#### 4.2 Custom RAG Tools
+```typescript
+// Custom tool for searching project context
+const searchProjectContext = async ({ query, projectName }: {
+  query: string;
+  projectName?: string;
+}) => {
+  // Search OpenAI vector store
+  const results = await openai.vectorStores.search({
+    vector_store_id: process.env.ORG_KNOWLEDGE_STORE_ID,
+    query: `${query} ${projectName ? `project:${projectName}` : ''}`,
+    top_k: 5
+  });
+  
+  // Enhance with database context
+  const projectData = projectName ? 
+    await db.from('project_context').select().eq('project_name', projectName) : 
+    null;
+  
+  return {
+    vectorResults: results,
+    projectDetails: projectData,
+    relevance: calculateRelevance(results)
+  };
+};
+
+// Tool for relationship intelligence
+const searchRelationshipHistory = async ({ contacts, timeframe }: {
+  contacts: string[];
+  timeframe: string;
+}) => {
+  const history = await db
+    .from('relationship_intelligence')
+    .select(`
+      *,
+      contacts!inner(email, name, organization)
+    `)
+    .in('contacts.email', contacts);
+    
+  return {
+    interactions: history,
+    communicationPatterns: analyzePatterns(history),
+    preferences: extractPreferences(history)
+  };
+};
+
+// Tool for fact verification
+const verifyOrganizationalFacts = async ({ claims }: {
+  claims: string[];
+}) => {
+  const verifications = await Promise.all(
+    claims.map(async (claim) => {
+      const evidence = await openai.vectorStores.search({
+        vector_store_id: process.env.ORG_KNOWLEDGE_STORE_ID,
+        query: claim,
+        top_k: 3
+      });
+      
+      return {
+        claim,
+        verified: evidence.relevance > 0.8,
+        evidence: evidence.results,
+        confidence: evidence.relevance
+      };
+    })
+  );
+  
+  return verifications;
+};
+```
+
+#### 4.3 Learning System
 ```typescript
 interface LearningSystem {
   // Capture edits
@@ -493,11 +661,50 @@ async function refreshAccessToken(userId: string): Promise<string> {
 - TLS 1.3 for all API communications
 - Webhook secrets rotated monthly
 
-### 6. Performance Requirements
+### 6. Vector Store Management
+
+```typescript
+// Initialize organizational vector store
+const initializeVectorStore = async () => {
+  const vectorStore = await openai.vectorStores.create({
+    name: 'MPA Organizational Knowledge',
+    description: 'Email history, documents, decisions, and project context'
+  });
+  
+  // Index existing data
+  await indexHistoricalEmails(vectorStore.id);
+  await indexOrganizationalDocuments(vectorStore.id);
+  await indexProjectDocumentation(vectorStore.id);
+  
+  return vectorStore.id;
+};
+
+// Continuous learning - update vector store
+const updateKnowledgeBase = async (email: ProcessedEmail) => {
+  if (email.significance > 0.7) {
+    await openai.vectorStores.files.create({
+      vector_store_id: process.env.ORG_KNOWLEDGE_STORE_ID,
+      file: {
+        content: formatEmailForIndexing(email),
+        metadata: {
+          type: 'email',
+          project: email.project,
+          participants: email.participants,
+          date: email.date,
+          significance: email.significance
+        }
+      }
+    });
+  }
+};
+```
+
+### 7. Performance Requirements
 
 - **Webhook Response Time**: <5 seconds (Microsoft requirement)
-- **Email Processing**: <30 seconds per email
-- **Draft Generation**: <10 seconds for standard emails
+- **Email Processing**: <30 seconds per email (including context search)
+- **Draft Generation**: <15 seconds with full context
+- **Vector Search**: <2 seconds per query
 - **Dashboard Load**: <2 seconds initial load
 - **Daily Briefing Generation**: <60 seconds
 - **Concurrent Users**: Support 10 simultaneous users
@@ -587,17 +794,28 @@ SENTRY_DSN=
 
 ### 10. MVP Deliverables
 
-1. **Week 1-2**: Core infrastructure and Microsoft integration
-2. **Week 3-4**: Email processing and draft generation
-3. **Week 5-6**: Learning system and feedback loop
-4. **Week 7-8**: Daily briefing and web dashboard
-5. **Week 9-10**: Testing, security audit, and deployment
-6. **Week 11-12**: Pilot with Tom, iterate based on feedback
+1. **Week 1-2**: Core infrastructure, Microsoft integration, OpenAI Agents SDK setup
+2. **Week 3-4**: Vector store creation, historical data indexing, RAG tools
+3. **Week 5-6**: Agent-based email processing with context awareness
+4. **Week 7-8**: Learning system, feedback loop, and relationship intelligence
+5. **Week 9-10**: Daily briefing, web dashboard, and monitoring
+6. **Week 11-12**: Testing, security audit, deployment, and pilot with Tom
 
 ### 11. Success Criteria
 
 - Successfully process 95% of emails without errors
 - Generate contextually appropriate drafts 80% of the time
+- Achieve 90% accuracy in fact verification against organizational knowledge
+- Demonstrate project and relationship awareness in 85% of responses
 - Reduce email processing time by 50% for pilot user
 - Zero security incidents or data breaches
 - User satisfaction score of 4+ out of 5
+
+### 12. Key Differentiators with RAG/Agent Approach
+
+1. **Full Organizational Context**: Every email response considers the complete organizational knowledge base
+2. **Fact Verification**: All claims and numbers verified against source documents
+3. **Project Awareness**: References specific initiatives, deadlines, and team members
+4. **Relationship Intelligence**: Tailored communication based on interaction history
+5. **Continuous Learning**: Vector store updates with every significant interaction
+6. **Production-Ready**: Built on OpenAI's battle-tested Agents SDK with built-in tracing
