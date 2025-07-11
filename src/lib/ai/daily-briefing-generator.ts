@@ -6,8 +6,11 @@ import {
   IntelligentAction,
   AutomatedAction,
   EmailThread,
-  ExtractedTask
+  ExtractedTask,
+  EmailMessage
 } from '@/types'
+import { EnhancedBriefingSummary } from '@/types/briefing'
+import { categorizeEmailsByTopic } from './topic-categorizer'
 import { analyzeRelationshipPatterns } from './relationship-analyzer'
 import { detectAnomalies } from './anomaly-detector'
 import { generateIntelligentActions } from './intelligent-action-generator'
@@ -163,13 +166,21 @@ const briefingAgent = new Agent({
         "pending_responses": number,
         "overdue_tasks": number,
         "vip_threads": number
-      }
+      },
+      "topic_summaries": [
+        {
+          "topic": "string - topic name like 'Financial Operations'",
+          "summary": "string - 1-2 sentence summary of emails in this topic",
+          "action_needed": "boolean - whether immediate action is required"
+        }
+      ]
     }
     
     Focus on:
     1. NEED TO KNOW: Deadlines, critical decisions, VIP messages, important updates
     2. NEED TO DO: Specific actions with clear next steps
     3. ANOMALIES: Unusual patterns, risks, opportunities
+    4. TOPIC SUMMARIES: Brief overview of emails grouped by topic
     
     IMPORTANT: When referencing threads, use the 'id' field (UUID format like "64bbe07a-6cbd-42a3-a010-f47a8282b190"), 
     NOT the 'thread_id' field (Microsoft format like "AAQkAGY3NDU2MTk5...").
@@ -226,17 +237,21 @@ export class DailyBriefingGenerator {
       vipThreads,
       recentActivity,
       relationshipPatterns,
-      anomalies
+      anomalies,
+      allRecentThreads,
+      recentMessages
     ] = await Promise.allSettled([
       this.getUnreadImportantThreads(),
       this.getPendingTasks(),
       this.getVIPThreads(),
       this.getRecentActivity(),
       analyzeRelationshipPatterns(this.userId),
-      detectAnomalies(this.userId)
+      detectAnomalies(this.userId),
+      this.getRecentThreads(),
+      this.getRecentMessages()
     ]).then(results => {
       const resolved = results.map((result, index) => {
-        const labels = ['unreadThreads', 'pendingTasks', 'vipThreads', 'recentActivity', 'relationshipPatterns', 'anomalies']
+        const labels = ['unreadThreads', 'pendingTasks', 'vipThreads', 'recentActivity', 'relationshipPatterns', 'anomalies', 'allRecentThreads', 'recentMessages']
         if (result.status === 'rejected') {
           console.error(`Failed to get ${labels[index]}:`, result.reason)
           return index === 3 ? { emails_processed: 0, drafts_generated: 0, tasks_extracted: 0 } : []
@@ -252,8 +267,38 @@ export class DailyBriefingGenerator {
       vipThreads: vipThreads.length,
       recentActivity,
       relationshipPatterns: relationshipPatterns.length,
-      anomalies: anomalies.length
+      anomalies: anomalies.length,
+      allRecentThreads: allRecentThreads.length,
+      recentMessages: recentMessages.length
     })
+
+    // Categorize emails by topic using all available threads
+    const allThreadsForCategorization = [...unreadThreads, ...vipThreads, ...allRecentThreads]
+    const allMessagesForCategorization = [...recentMessages]
+    
+    // If we don't have recent messages, get messages for the important threads
+    if (allMessagesForCategorization.length === 0 && allThreadsForCategorization.length > 0) {
+      const threadIds = allThreadsForCategorization.map(t => t.id).slice(0, 20) // Limit to avoid too many queries
+      const emailContent = await this.getEmailContent(threadIds)
+      // Transform email content to message format for categorization
+      allMessagesForCategorization.push(...emailContent.map(msg => ({
+        id: msg.id,
+        thread_id: msg.thread_id,
+        subject: msg.subject,
+        body: msg.body,
+        from_email: msg.from_email,
+        from_name: null, // Not available in email content
+        to_emails: [],
+        received_at: msg.received_at,
+        user_id: this.userId,
+        is_read: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })))
+    }
+    
+    const topicGroups = categorizeEmailsByTopic(allThreadsForCategorization, allMessagesForCategorization)
+    console.log('Categorized emails into topics:', topicGroups.map(g => `${g.title} (${g.count})`))
 
     // Generate intelligence summary
     console.log('Generating intelligence summary...')
@@ -263,7 +308,8 @@ export class DailyBriefingGenerator {
       vipThreads,
       recentActivity,
       relationshipPatterns,
-      anomalies
+      anomalies,
+      topicGroups
     })
 
     // Generate intelligent action recommendations
@@ -358,6 +404,34 @@ export class DailyBriefingGenerator {
     return data || []
   }
 
+  private async getRecentThreads(): Promise<EmailThread[]> {
+    const supabase = await this.getSupabase()
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const { data } = await supabase
+      .from('email_threads')
+      .select('*')
+      .eq('user_id', this.userId)
+      .gte('last_message_date', yesterday.toISOString())
+      .order('last_message_date', { ascending: false })
+      .limit(50)
+
+    return data || []
+  }
+
+  private async getRecentMessages(): Promise<EmailMessage[]> {
+    const supabase = await this.getSupabase()
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const { data } = await supabase
+      .from('email_messages')
+      .select('*')
+      .eq('user_id', this.userId)
+      .gte('received_at', yesterday.toISOString())
+      .order('received_at', { ascending: false })
+      .limit(100)
+
+    return data || []
+  }
+
   private async getRecentActivity() {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
     const supabase = await this.getSupabase()
@@ -401,7 +475,7 @@ export class DailyBriefingGenerator {
     return messages || []
   }
 
-  private async generateIntelligenceSummary(data: any): Promise<IntelligenceSummary> {
+  private async generateIntelligenceSummary(data: any): Promise<IntelligenceSummary & { topics?: any[] }> {
     // Get actual email content for context
     const threadIds = [
       ...data.unreadThreads.map((t: any) => t.id),
@@ -409,6 +483,14 @@ export class DailyBriefingGenerator {
     ].slice(0, 10) // Limit to 10 most important threads
     
     const emailContent = await this.getEmailContent(threadIds)
+    
+    // Store topic groups in the intelligence summary
+    const topicSummaries = data.topicGroups?.map((group: any) => ({
+      topic: group.title,
+      count: group.count,
+      priority: group.priority,
+      emails: group.emails.slice(0, 5) // Include top 5 emails per topic
+    }))
     
     const prompt = `
       Generate a morning intelligence briefing based on the following data:
@@ -419,11 +501,13 @@ export class DailyBriefingGenerator {
       VIP Communications: ${JSON.stringify(data.vipThreads)}
       Relationship Patterns: ${JSON.stringify(data.relationshipPatterns)}
       Anomalies: ${JSON.stringify(data.anomalies)}
+      Topic Groups: ${JSON.stringify(topicSummaries)}
       
       Focus on:
       1. What the user NEEDS TO KNOW (critical information, deadlines, VIP messages)
       2. What the user NEEDS TO DO (urgent tasks, required responses, follow-ups)
       3. ANOMALIES (unusual patterns, delayed responses, potential issues)
+      4. TOPIC SUMMARIES (brief overview of emails in each topic group)
       
       Be concise and actionable. Prioritize by urgency and importance.
     `
@@ -437,7 +521,13 @@ export class DailyBriefingGenerator {
 
       // Parse the response into IntelligenceSummary format
       const content = response.finalOutput || ''
-      return this.parseIntelligenceSummary(content)
+      const parsed = this.parseIntelligenceSummary(content)
+      
+      // Add the topic groups to the parsed summary
+      return {
+        ...parsed,
+        topics: data.topicGroups || []
+      }
     } catch (error) {
       console.error('OpenAI agent failed:', error)
       // Return a fallback summary
@@ -450,7 +540,8 @@ export class DailyBriefingGenerator {
           pending_responses: 0,
           overdue_tasks: 0,
           vip_threads: 0
-        }
+        },
+        topics: data.topicGroups || []
       }
     }
   }

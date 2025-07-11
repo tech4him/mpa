@@ -8,7 +8,7 @@ import { StatsCards } from '@/components/stats-cards'
 import { DashboardHeader } from '@/components/dashboard-header'
 import { EmailClassificationDashboard } from '@/components/email-classification-dashboard'
 import { ProcessingRulesManager } from '@/components/processing-rules-manager'
-import { DailyBriefingComponent } from '@/components/daily-briefing'
+import { EnhancedDailyBriefingComponent } from '@/components/enhanced-daily-briefing'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Eye, EyeOff, RefreshCw, Brain, TrendingUp } from 'lucide-react'
@@ -219,7 +219,7 @@ export default function DashboardPage() {
             </TabsList>
             
             <TabsContent value="briefing" className="mt-6">
-              <DailyBriefingComponent 
+              <EnhancedDailyBriefingComponent 
                 briefing={briefing}
                 onRefresh={loadBriefing}
                 loading={briefingLoading}
