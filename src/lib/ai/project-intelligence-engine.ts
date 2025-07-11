@@ -30,9 +30,9 @@ const analyzeProjectHealth = tool({
     properties: {
       projectId: { type: 'string', description: 'Project ID to analyze' },
       userId: { type: 'string', description: 'User ID' },
-      lookbackDays: { type: 'number', description: 'Number of days to look back for analysis', default: 30 }
+      lookbackDays: { type: 'number', description: 'Number of days to look back for analysis' }
     },
-    required: ['projectId', 'userId'],
+    required: ['projectId', 'userId', 'lookbackDays'],
     additionalProperties: false
   },
   execute: async ({ projectId, userId, lookbackDays = 30 }) => {
@@ -103,7 +103,7 @@ const detectProjectRisks = tool({
       userId: { type: 'string', description: 'User ID' },
       projectIds: { type: 'array', items: { type: 'string' }, description: 'Specific project IDs to analyze, or empty for all' }
     },
-    required: ['userId'],
+    required: ['userId', 'projectIds'],
     additionalProperties: false
   },
   execute: async ({ userId, projectIds = [] }) => {
@@ -188,9 +188,9 @@ const analyzeStakeholderEngagement = tool({
     properties: {
       userId: { type: 'string', description: 'User ID' },
       stakeholderEmails: { type: 'array', items: { type: 'string' }, description: 'Specific stakeholders to analyze' },
-      lookbackDays: { type: 'number', description: 'Days to look back for analysis', default: 60 }
+      lookbackDays: { type: 'number', description: 'Days to look back for analysis' }
     },
-    required: ['userId'],
+    required: ['userId', 'stakeholderEmails', 'lookbackDays'],
     additionalProperties: false
   },
   execute: async ({ userId, stakeholderEmails = [], lookbackDays = 60 }) => {

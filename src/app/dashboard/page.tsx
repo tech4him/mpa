@@ -10,9 +10,10 @@ import { EmailClassificationDashboard } from '@/components/email-classification-
 import { ProcessingRulesManager } from '@/components/processing-rules-manager'
 import { EnhancedDailyBriefingComponent } from '@/components/enhanced-daily-briefing'
 import { ExecutiveAssistantBriefingComponent } from '@/components/executive-assistant-briefing'
+import { InboxZeroDashboard } from '@/components/inbox-zero-dashboard'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Eye, EyeOff, RefreshCw, Brain, TrendingUp, Briefcase } from 'lucide-react'
+import { Eye, EyeOff, RefreshCw, Brain, TrendingUp, Briefcase, Zap } from 'lucide-react'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -217,8 +218,12 @@ export default function DashboardPage() {
         <StatsCards stats={statsData} />
 
         <div className="mt-8">
-          <Tabs defaultValue="briefing" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+          <Tabs defaultValue="inbox-zero" className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="inbox-zero" className="flex items-center space-x-1">
+                <Zap className="h-4 w-4" />
+                <span>Inbox Zero</span>
+              </TabsTrigger>
               <TabsTrigger value="briefing" className="flex items-center space-x-1">
                 <Briefcase className="h-4 w-4" />
                 <span>Intelligence Briefing</span>
@@ -241,6 +246,10 @@ export default function DashboardPage() {
                 <span>AI Rules</span>
               </TabsTrigger>
             </TabsList>
+            
+            <TabsContent value="inbox-zero" className="mt-6">
+              <InboxZeroDashboard />
+            </TabsContent>
             
             <TabsContent value="briefing" className="mt-6">
               <div className="mb-4 flex items-center justify-between">
