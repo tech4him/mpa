@@ -35,7 +35,7 @@ export default async function ThreadDetailPage({
     .select('*')
     .eq('thread_id', id)
     .is('is_deleted', false)
-    .order('received_at', { ascending: true })
+    .order('received_at', { ascending: false })
 
   return <ThreadDetailView thread={thread} messages={messages || []} />
 }

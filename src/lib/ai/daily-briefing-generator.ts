@@ -1,5 +1,5 @@
-import { Agent, run } from '@openai/agents'
-import { createClient } from '@/lib/supabase/server'
+import { Agent, run, tool } from '@openai/agents'
+import { createServiceClient } from '@/lib/supabase/service'
 import { 
   DailyBriefing, 
   IntelligenceSummary, 
@@ -12,25 +12,179 @@ import { analyzeRelationshipPatterns } from './relationship-analyzer'
 import { detectAnomalies } from './anomaly-detector'
 import { generateIntelligentActions } from './intelligent-action-generator'
 
+// Tool to search for email content by keywords
+const searchEmailContent = tool({
+  name: 'searchEmailContent',
+  description: 'Search email messages for specific keywords or topics',
+  parameters: {
+    type: 'object',
+    properties: {
+      keywords: { type: 'string', description: 'Keywords to search for' },
+      userId: { type: 'string', description: 'User ID to search for' },
+      limit: { type: 'number', description: 'Max results to return (optional, defaults to 10)' }
+    },
+    required: ['keywords', 'userId', 'limit'],
+    additionalProperties: false
+  },
+  execute: async ({ keywords, userId, limit = 10 }) => {
+    const supabase = createServiceClient()
+    const { data } = await supabase
+      .from('email_messages')
+      .select('id, thread_id, subject, body, from_email, received_at')
+      .eq('user_id', userId)
+      .or(`subject.ilike.%${keywords}%,body.ilike.%${keywords}%`)
+      .order('received_at', { ascending: false })
+      .limit(limit)
+    
+    return data || []
+  }
+})
+
+// Tool to get calendar/meeting context
+const getUpcomingDeadlines = tool({
+  name: 'getUpcomingDeadlines',
+  description: 'Get tasks and deadlines coming up in the next few days',
+  parameters: {
+    type: 'object',
+    properties: {
+      userId: { type: 'string', description: 'User ID' },
+      days: { type: 'number', description: 'Number of days to look ahead (optional, defaults to 7)' }
+    },
+    required: ['userId', 'days'],
+    additionalProperties: false
+  },
+  execute: async ({ userId, days = 7 }) => {
+    const supabase = createServiceClient()
+    const futureDate = new Date()
+    futureDate.setDate(futureDate.getDate() + days)
+    
+    const { data } = await supabase
+      .from('extracted_tasks')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .lte('due_date', futureDate.toISOString())
+      .order('due_date', { ascending: true })
+    
+    return data || []
+  }
+})
+
+// Tool to analyze thread importance
+const analyzeThreadImportance = tool({
+  name: 'analyzeThreadImportance',
+  description: 'Analyze why a thread might be important based on participants and content',
+  parameters: {
+    type: 'object',
+    properties: {
+      threadId: { type: 'string', description: 'Thread database ID' },
+      userId: { type: 'string', description: 'User ID' }
+    },
+    required: ['threadId', 'userId'],
+    additionalProperties: false
+  },
+  execute: async ({ threadId, userId }) => {
+    const supabase = createServiceClient()
+    
+    // Get thread details
+    const { data: thread } = await supabase
+      .from('email_threads')
+      .select('*')
+      .eq('id', threadId)
+      .eq('user_id', userId)
+      .single()
+    
+    // Get recent messages
+    const { data: messages } = await supabase
+      .from('email_messages')
+      .select('body, from_email, received_at')
+      .eq('thread_id', threadId)
+      .order('received_at', { ascending: false })
+      .limit(3)
+    
+    // Check if any participants are VIPs
+    const { data: vipContacts } = await supabase
+      .from('contacts')
+      .select('email, name, is_vip')
+      .eq('user_id', userId)
+      .in('email', thread?.participants || [])
+      .eq('is_vip', true)
+    
+    return {
+      thread,
+      recentMessages: messages,
+      vipParticipants: vipContacts,
+      hasVIPs: (vipContacts?.length || 0) > 0,
+      messageCount: thread?.message_count || 0,
+      daysSinceLastMessage: thread?.last_message_date 
+        ? Math.floor((new Date().getTime() - new Date(thread.last_message_date).getTime()) / (1000 * 60 * 60 * 24))
+        : null
+    }
+  }
+})
+
 // Daily Briefing Agent
 const briefingAgent = new Agent({
   name: 'Daily Briefing Agent',
   model: 'gpt-4o',
+  tools: [searchEmailContent, getUpcomingDeadlines, analyzeThreadImportance],
   instructions: `You are an intelligent assistant generating daily briefings for Mission Mutual staff.
-    Your briefings should be:
-    - Concise and actionable
-    - Focused on what truly matters
-    - Proactive in identifying potential issues
-    - Context-aware about ongoing projects and relationships
     
-    Prioritize information based on:
-    1. Urgency and time sensitivity
-    2. VIP communications
-    3. Project deadlines
-    4. Unusual patterns or anomalies
-    5. Follow-up commitments
+    You MUST return a JSON object with this exact structure:
+    {
+      "need_to_know": [
+        {
+          "title": "string - brief title",
+          "description": "string - detailed description",
+          "urgency": "high" | "medium" | "low",
+          "related_threads": ["optional array of thread database IDs (UUIDs), NOT Microsoft thread_ids"]
+        }
+      ],
+      "need_to_do": [
+        {
+          "task": "string - clear action item",
+          "due": "ISO date string or null",
+          "priority": number (1-5),
+          "source": "string - where this came from",
+          "thread_id": "optional thread ID"
+        }
+      ],
+      "anomalies": [
+        {
+          "type": "string - anomaly type",
+          "description": "string - what's unusual",
+          "severity": "critical" | "warning" | "info",
+          "recommendation": "string - what to do about it",
+          "related_entity": "optional string"
+        }
+      ],
+      "key_metrics": {
+        "unread_important": number,
+        "pending_responses": number,
+        "overdue_tasks": number,
+        "vip_threads": number
+      }
+    }
     
-    Format responses as structured JSON matching the IntelligenceSummary type.`,
+    Focus on:
+    1. NEED TO KNOW: Deadlines, critical decisions, VIP messages, important updates
+    2. NEED TO DO: Specific actions with clear next steps
+    3. ANOMALIES: Unusual patterns, risks, opportunities
+    
+    IMPORTANT: When referencing threads, use the 'id' field (UUID format like "64bbe07a-6cbd-42a3-a010-f47a8282b190"), 
+    NOT the 'thread_id' field (Microsoft format like "AAQkAGY3NDU2MTk5...").
+    
+    TOOLS AVAILABLE:
+    1. searchEmailContent - Search for emails about specific topics or keywords
+    2. getUpcomingDeadlines - Get tasks and deadlines coming up 
+    3. analyzeThreadImportance - Deep dive into why a thread matters
+    
+    USE THESE TOOLS to gather additional context beyond the basic data provided. For example:
+    - If you see a Meraki license renewal, use searchEmailContent to find related emails
+    - Use getUpcomingDeadlines to check for approaching deadlines
+    - Use analyzeThreadImportance for high-priority threads to understand their significance
+    
+    Be concise and actionable. Extract key information from email content and tool results.`,
 })
 
 export class DailyBriefingGenerator {
@@ -41,12 +195,13 @@ export class DailyBriefingGenerator {
   }
 
   private async getSupabase() {
-    return await createClient()
+    return createServiceClient()
   }
 
-  async generateMorningBriefing(): Promise<DailyBriefing> {
-    const briefingDate = new Date()
-    briefingDate.setHours(0, 0, 0, 0)
+  async generateMorningBriefing(dateString?: string): Promise<DailyBriefing> {
+    // Use provided date or current date
+    const briefingDateStr = dateString || new Date().toISOString().split('T')[0]
+    console.log('Generating briefing for date:', briefingDateStr)
 
     // Check if briefing already exists
     const supabase = await this.getSupabase()
@@ -54,15 +209,17 @@ export class DailyBriefingGenerator {
       .from('daily_briefings')
       .select('*')
       .eq('user_id', this.userId)
-      .eq('briefing_date', briefingDate.toISOString())
+      .eq('briefing_date', briefingDateStr)
       .eq('briefing_type', 'morning')
       .single()
 
     if (existing) {
+      console.log('Briefing already exists for date:', briefingDateStr, 'ID:', existing.id)
       return existing as DailyBriefing
     }
 
     // Gather intelligence data
+    console.log('Gathering intelligence data for user:', this.userId)
     const [
       unreadThreads,
       pendingTasks,
@@ -70,16 +227,36 @@ export class DailyBriefingGenerator {
       recentActivity,
       relationshipPatterns,
       anomalies
-    ] = await Promise.all([
+    ] = await Promise.allSettled([
       this.getUnreadImportantThreads(),
       this.getPendingTasks(),
       this.getVIPThreads(),
       this.getRecentActivity(),
       analyzeRelationshipPatterns(this.userId),
       detectAnomalies(this.userId)
-    ])
+    ]).then(results => {
+      const resolved = results.map((result, index) => {
+        const labels = ['unreadThreads', 'pendingTasks', 'vipThreads', 'recentActivity', 'relationshipPatterns', 'anomalies']
+        if (result.status === 'rejected') {
+          console.error(`Failed to get ${labels[index]}:`, result.reason)
+          return index === 3 ? { emails_processed: 0, drafts_generated: 0, tasks_extracted: 0 } : []
+        }
+        return result.value
+      })
+      return resolved
+    })
+
+    console.log('Intelligence data gathered:', {
+      unreadThreads: unreadThreads.length,
+      pendingTasks: pendingTasks.length,
+      vipThreads: vipThreads.length,
+      recentActivity,
+      relationshipPatterns: relationshipPatterns.length,
+      anomalies: anomalies.length
+    })
 
     // Generate intelligence summary
+    console.log('Generating intelligence summary...')
     const intelligenceSummary = await this.generateIntelligenceSummary({
       unreadThreads,
       pendingTasks,
@@ -90,12 +267,19 @@ export class DailyBriefingGenerator {
     })
 
     // Generate intelligent action recommendations
-    const actionsRecommended = await generateIntelligentActions({
-      userId: this.userId,
-      threads: [...unreadThreads, ...vipThreads],
-      tasks: pendingTasks,
-      anomalies
-    })
+    console.log('Generating intelligent actions...')
+    let actionsRecommended = []
+    try {
+      actionsRecommended = await generateIntelligentActions({
+        userId: this.userId,
+        threads: [...unreadThreads, ...vipThreads],
+        tasks: pendingTasks,
+        anomalies
+      })
+      console.log('Generated actions:', actionsRecommended.length)
+    } catch (error) {
+      console.error('Failed to generate intelligent actions:', error)
+    }
 
     // Get automated actions taken overnight
     const actionsTakenAutomatically = await this.getAutomatedActions()
@@ -112,7 +296,7 @@ export class DailyBriefingGenerator {
       .from('daily_briefings')
       .insert({
         user_id: this.userId,
-        briefing_date: briefingDate.toISOString().split('T')[0], // Use date string format
+        briefing_date: briefingDateStr, // Use date string format
         briefing_type: 'morning',
         intelligence_summary: intelligenceSummary,
         actions_recommended: actionsRecommended,
@@ -203,11 +387,34 @@ export class DailyBriefingGenerator {
     }
   }
 
+  private async getEmailContent(threadIds: string[]): Promise<any[]> {
+    if (threadIds.length === 0) return []
+    
+    const supabase = await this.getSupabase()
+    const { data: messages } = await supabase
+      .from('email_messages')
+      .select('thread_id, subject, body, from_email, to_emails, received_at')
+      .in('thread_id', threadIds)
+      .order('received_at', { ascending: false })
+      .limit(50)
+    
+    return messages || []
+  }
+
   private async generateIntelligenceSummary(data: any): Promise<IntelligenceSummary> {
+    // Get actual email content for context
+    const threadIds = [
+      ...data.unreadThreads.map((t: any) => t.id),
+      ...data.vipThreads.map((t: any) => t.id)
+    ].slice(0, 10) // Limit to 10 most important threads
+    
+    const emailContent = await this.getEmailContent(threadIds)
+    
     const prompt = `
       Generate a morning intelligence briefing based on the following data:
       
       Unread Important Threads: ${JSON.stringify(data.unreadThreads)}
+      Email Content Samples: ${JSON.stringify(emailContent)}
       Pending Tasks: ${JSON.stringify(data.pendingTasks)}
       VIP Communications: ${JSON.stringify(data.vipThreads)}
       Relationship Patterns: ${JSON.stringify(data.relationshipPatterns)}
@@ -221,21 +428,71 @@ export class DailyBriefingGenerator {
       Be concise and actionable. Prioritize by urgency and importance.
     `
 
-    const response = await run(briefingAgent, prompt)
+    try {
+      console.log('Calling OpenAI agent for intelligence summary...')
+      const response = await run(briefingAgent, prompt)
+      console.log('OpenAI agent response received:', !!response.finalOutput)
+      console.log('Agent response type:', typeof response.finalOutput)
+      console.log('Agent response content:', JSON.stringify(response.finalOutput).substring(0, 500))
 
-    // Parse the response into IntelligenceSummary format
-    const content = response.finalOutput || ''
-    return this.parseIntelligenceSummary(content)
+      // Parse the response into IntelligenceSummary format
+      const content = response.finalOutput || ''
+      return this.parseIntelligenceSummary(content)
+    } catch (error) {
+      console.error('OpenAI agent failed:', error)
+      // Return a fallback summary
+      return {
+        need_to_know: [],
+        need_to_do: [],
+        anomalies: [],
+        key_metrics: {
+          unread_important: 0,
+          pending_responses: 0,
+          overdue_tasks: 0,
+          vip_threads: 0
+        }
+      }
+    }
   }
 
   private parseIntelligenceSummary(content: any): IntelligenceSummary {
     // Parse AI response into structured format
     try {
+      let parsed = content
+      
       if (typeof content === 'string') {
-        return JSON.parse(content)
+        // Remove markdown code blocks if present
+        const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+        
+        // Try to extract JSON from the string
+        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0])
+        } else {
+          parsed = JSON.parse(cleanContent)
+        }
       }
-      return content
+      
+      // If the response has an IntelligenceSummary property, use that
+      if (parsed?.IntelligenceSummary) {
+        parsed = parsed.IntelligenceSummary
+      }
+      
+      // Ensure all required fields exist
+      return {
+        need_to_know: parsed.need_to_know || [],
+        need_to_do: parsed.need_to_do || [],
+        anomalies: parsed.anomalies || [],
+        key_metrics: parsed.key_metrics || {
+          unread_important: 0,
+          pending_responses: 0,
+          overdue_tasks: 0,
+          vip_threads: 0
+        }
+      }
     } catch (error) {
+      console.error('Failed to parse intelligence summary:', error)
+      console.error('Content was:', content)
       // Fallback structure
       return {
         need_to_know: [],

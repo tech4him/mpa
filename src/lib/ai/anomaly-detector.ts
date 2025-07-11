@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 
 export interface Anomaly {
   type: 'delayed_response' | 'unusual_volume' | 'priority_shift' | 'new_contact' | 'missing_followup' | 'pattern_break'
@@ -18,7 +18,7 @@ export interface Anomaly {
 }
 
 export async function detectAnomalies(userId: string): Promise<Anomaly[]> {
-  const supabase = await createClient()
+  const supabase = createServiceClient()
   const anomalies: Anomaly[] = []
   
   // Get baseline data for comparison
@@ -70,21 +70,28 @@ export async function detectAnomalies(userId: string): Promise<Anomaly[]> {
 }
 
 async function getResponsePatterns(userId: string) {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('relationship_intelligence')
-    .select(`
-      *,
-      contacts!inner(email, name, is_vip, last_interaction)
-    `)
-    .eq('contacts.user_id', userId)
-    .eq('contacts.is_vip', true)
-  
-  return data || []
+  const supabase = createServiceClient()
+  try {
+    const { data, error } = await supabase
+      .from('relationship_intelligence')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('importance_score', 7) // High importance relationships
+    
+    if (error) {
+      console.error('Error fetching response patterns:', error)
+      return []
+    }
+    
+    return data || []
+  } catch (err) {
+    console.error('Exception in getResponsePatterns:', err)
+    return []
+  }
 }
 
 async function getVolumePatterns(userId: string) {
-  const supabase = await createClient()
+  const supabase = createServiceClient()
   const last30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
   
   const { data } = await supabase
@@ -98,7 +105,7 @@ async function getVolumePatterns(userId: string) {
 }
 
 async function getVIPCommunications(userId: string) {
-  const supabase = await createClient()
+  const supabase = createServiceClient()
   const { data } = await supabase
     .from('email_threads')
     .select('*')
@@ -111,7 +118,7 @@ async function getVIPCommunications(userId: string) {
 }
 
 async function getPendingTasks(userId: string) {
-  const supabase = await createClient()
+  const supabase = createServiceClient()
   const { data } = await supabase
     .from('extracted_tasks')
     .select('*')
@@ -123,7 +130,7 @@ async function getPendingTasks(userId: string) {
 }
 
 async function getRecentThreads(userId: string) {
-  const supabase = await createClient()
+  const supabase = createServiceClient()
   const { data } = await supabase
     .from('email_threads')
     .select('*')

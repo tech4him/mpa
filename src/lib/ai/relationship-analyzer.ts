@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 
 export interface RelationshipPattern {
   contact_email: string
@@ -20,7 +20,7 @@ export interface RelationshipPattern {
 }
 
 export async function analyzeRelationshipPatterns(userId: string): Promise<RelationshipPattern[]> {
-  const supabase = await createClient()
+  const supabase = createServiceClient()
   
   // Get contacts data directly for now
   const { data: contacts } = await supabase

@@ -197,13 +197,12 @@ export function SafeEmailViewer({ subject, body, contentType = 'text/html', clas
           }
           .email-content table {
             border-collapse: collapse;
-            width: 100%;
-            margin: 1rem 0;
           }
           .email-content table td,
           .email-content table th {
-            border: 1px solid rgb(229 231 235);
-            padding: 0.5rem;
+            border: none;
+            padding: 0;
+            margin: 0;
           }
           .email-content blockquote {
             border-left: 4px solid rgb(229 231 235);
@@ -228,7 +227,7 @@ export function SafeEmailViewer({ subject, body, contentType = 'text/html', clas
           }
           .dark .email-content table td,
           .dark .email-content table th {
-            border: 1px solid rgb(75 85 99);
+            border: none;
           }
           .dark .email-content blockquote {
             border-left: 4px solid rgb(75 85 99);
@@ -252,7 +251,7 @@ export function SafeEmailViewer({ subject, body, contentType = 'text/html', clas
             }
             .email-content table td,
             .email-content table th {
-              border: 1px solid rgb(75 85 99);
+              border: none;
             }
             .email-content blockquote {
               border-left: 4px solid rgb(75 85 99);

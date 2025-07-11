@@ -1,5 +1,11 @@
 import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
+import { File } from 'node:buffer'
+
+// Set up File global for OpenAI
+if (typeof globalThis.File === 'undefined') {
+  globalThis.File = File
+}
 
 interface EmailDocument {
   id: string
@@ -44,12 +50,22 @@ export class VectorStoreService {
       // Format email content for vector store
       const documentContent = this.formatEmailForVectorStore(emailDocument)
       
-      // Store directly in our database for vector search
-      // The OpenAI agents will use the vector store configured in the environment
+      // Upload to OpenAI Vector Store
+      const file = await this.openai.files.create({
+        file: new File([documentContent], `email-${emailDocument.id}.txt`, { type: 'text/plain' }),
+        purpose: 'assistants',
+      })
+
+      await this.openai.vectorStores.files.create(this.vectorStoreId, {
+        file_id: file.id,
+      })
+      
+      // Store reference in our database
       await this.storeVectorStoreReference(
         userId,
         emailDocument,
-        documentContent
+        documentContent,
+        file.id
       )
 
       return { success: true, recordId: emailDocument.id }
@@ -88,7 +104,8 @@ Category: ${email.category}
   private async storeVectorStoreReference(
     userId: string,
     email: EmailDocument,
-    documentContent: string
+    documentContent: string,
+    fileId?: string
   ): Promise<void> {
     const supabase = await createClient()
     
@@ -109,6 +126,7 @@ Category: ${email.category}
         content: documentContent,
         metadata,
         vector_store_id: this.vectorStoreId,
+        openai_file_id: fileId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -173,6 +191,16 @@ Project ID: ${projectId}
 Mission Mutual Organizational Knowledge
 `
 
+      // Upload to OpenAI Vector Store
+      const file = await this.openai.files.create({
+        file: new File([documentContent], `doc-${projectId}.txt`, { type: 'text/plain' }),
+        purpose: 'assistants',
+      })
+
+      await this.openai.vectorStores.files.create(this.vectorStoreId, {
+        file_id: file.id,
+      })
+
       // Store in database
       const supabase = await createClient()
       const { data: record } = await supabase
@@ -186,6 +214,7 @@ Mission Mutual Organizational Knowledge
             title,
           },
           vector_store_id: this.vectorStoreId,
+          openai_file_id: file.id,
           project_id: projectId,
         })
         .select('id')

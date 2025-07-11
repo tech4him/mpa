@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { IntelligentAction, EmailThread, ExtractedTask } from '@/types'
 import { Anomaly } from './anomaly-detector'
 
@@ -27,7 +27,7 @@ interface ActionToCreate {
 }
 
 export async function generateIntelligentActions(context: ActionGenerationContext): Promise<IntelligentAction[]> {
-  const supabase = await createClient()
+  const supabase = createServiceClient()
   const actionsToCreate: ActionToCreate[] = []
   
   // 1. Generate draft reply actions for high-priority threads

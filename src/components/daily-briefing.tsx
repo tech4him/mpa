@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { AlertTriangle, CheckCircle, Clock, Users, TrendingUp, RefreshCw, MessageSquare, Calendar, Archive } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, Users, TrendingUp, RefreshCw, MessageSquare, Calendar, Archive, ExternalLink, Mail } from 'lucide-react'
 import { DailyBriefing, IntelligentAction } from '@/types'
+import Link from 'next/link'
 
 interface DailyBriefingProps {
   briefing?: DailyBriefing | null
@@ -36,17 +37,27 @@ export function DailyBriefingComponent({ briefing, onRefresh, loading = false }:
     setActionsLoading(false)
   }
 
-  const generateBriefing = async () => {
+  const generateBriefing = async (forceRegenerate: boolean = false) => {
     setActionsLoading(true)
     try {
+      const today = new Date().toISOString().split('T')[0]
       const response = await fetch('/api/briefing/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ briefingType: 'morning' })
+        body: JSON.stringify({ 
+          briefingType: 'morning', 
+          date: today,
+          forceRegenerate 
+        })
       })
       
       if (response.ok) {
+        const data = await response.json()
+        console.log('Briefing generated:', data)
         onRefresh?.()
+      } else {
+        const error = await response.json()
+        console.error('Briefing generation failed:', response.status, error)
       }
     } catch (error) {
       console.error('Error generating briefing:', error)
@@ -111,7 +122,7 @@ export function DailyBriefingComponent({ briefing, onRefresh, loading = false }:
                 variant="outline" 
                 size="sm" 
                 onClick={onRefresh}
-                disabled={loading}
+                disabled={loading || actionsLoading}
                 className="gap-2"
               >
                 {loading ? (
@@ -120,6 +131,20 @@ export function DailyBriefingComponent({ briefing, onRefresh, loading = false }:
                   <RefreshCw className="h-4 w-4" />
                 )}
                 Refresh
+              </Button>
+              <Button 
+                variant="secondary" 
+                size="sm" 
+                onClick={() => generateBriefing(true)}
+                disabled={loading || actionsLoading}
+                className="gap-2"
+              >
+                {loading || actionsLoading ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <TrendingUp className="h-4 w-4" />
+                )}
+                Re-generate
               </Button>
             </div>
           </div>
@@ -196,6 +221,20 @@ export function DailyBriefingComponent({ briefing, onRefresh, loading = false }:
                       <div className="flex-1">
                         <h4 className="font-medium">{item.title}</h4>
                         <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
+                        {item.related_threads && item.related_threads.length > 0 && (
+                          <div className="mt-2 flex gap-2">
+                            {item.related_threads.map((threadId, idx) => (
+                              <Link 
+                                key={idx}
+                                href={`/dashboard/thread/${threadId}`}
+                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                              >
+                                <Mail className="h-3 w-3" />
+                                View Thread
+                              </Link>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <Badge variant={
                         item.urgency === 'high' ? 'destructive' : 
@@ -238,6 +277,19 @@ export function DailyBriefingComponent({ briefing, onRefresh, loading = false }:
                                 <Clock className="h-3 w-3" />
                                 {new Date(task.due).toLocaleDateString()}
                               </span>
+                            </>
+                          )}
+                          {task.thread_id && (
+                            <>
+                              <span className="text-muted-foreground">•</span>
+                              <Link 
+                                href={`/dashboard/thread/${task.thread_id}`}
+                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                title="View the email thread that generated this task"
+                              >
+                                <Mail className="h-3 w-3" />
+                                View Source Email
+                              </Link>
                             </>
                           )}
                         </div>
@@ -401,6 +453,16 @@ function ActionCard({ action, onResponse, loading }: {
                 <p className="text-sm text-muted-foreground mb-2">
                   {action.trigger_context}
                 </p>
+                {action.thread_id && (
+                  <Link 
+                    href={`/dashboard/thread/${action.thread_id}`}
+                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mb-2"
+                  >
+                    <Mail className="h-3 w-3" />
+                    View Email Thread
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                )}
                 <div className="text-sm">
                   <strong>Recommended Action:</strong> {JSON.stringify(action.recommended_action.details)}
                 </div>
