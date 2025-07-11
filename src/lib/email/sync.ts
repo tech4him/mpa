@@ -79,21 +79,43 @@ export class EmailSyncService {
     try {
       const supabase = await this.getSupabase()
       
-      // Get user's encrypted refresh token
+      // Get user info and email account with token
       const { data: user } = await supabase
         .from('users')
-        .select('encrypted_refresh_token, email')
+        .select('email')
         .eq('id', userId)
         .single()
 
-      if (!user?.encrypted_refresh_token) {
+      if (!user) {
+        throw new Error('User not found')
+      }
+
+      // Get email account with access token (most recent with valid token)
+      const { data: emailAccounts } = await supabase
+        .from('email_accounts')
+        .select('encrypted_access_token, access_token_expires_at')
+        .eq('user_id', userId)
+        .eq('email_address', user.email)
+        .not('encrypted_access_token', 'is', null)
+        .gt('access_token_expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      const emailAccount = emailAccounts?.[0]
+
+      if (!emailAccount?.encrypted_access_token) {
         throw new Error('User token not found')
       }
 
-      // Decrypt stored token (which is actually an access token, not refresh token)
+      // Check if token is expired
+      if (emailAccount.access_token_expires_at && new Date(emailAccount.access_token_expires_at) <= new Date()) {
+        throw new Error('Access token has expired')
+      }
+
+      // Decrypt stored access token
       let accessToken: string
       try {
-        accessToken = await this.decryptRefreshToken(user.encrypted_refresh_token)
+        accessToken = await this.decryptRefreshToken(emailAccount.encrypted_access_token)
         console.log('Decrypted stored access token')
       } catch (error) {
         console.error('Failed to decrypt token:', error)

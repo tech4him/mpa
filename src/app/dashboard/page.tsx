@@ -9,9 +9,10 @@ import { DashboardHeader } from '@/components/dashboard-header'
 import { EmailClassificationDashboard } from '@/components/email-classification-dashboard'
 import { ProcessingRulesManager } from '@/components/processing-rules-manager'
 import { EnhancedDailyBriefingComponent } from '@/components/enhanced-daily-briefing'
+import { ExecutiveAssistantBriefingComponent } from '@/components/executive-assistant-briefing'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Eye, EyeOff, RefreshCw, Brain, TrendingUp } from 'lucide-react'
+import { Eye, EyeOff, RefreshCw, Brain, TrendingUp, Briefcase } from 'lucide-react'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -22,6 +23,9 @@ export default function DashboardPage() {
   const [autoProcessing, setAutoProcessing] = useState(false)
   const [briefing, setBriefing] = useState<any>(null)
   const [briefingLoading, setBriefingLoading] = useState(false)
+  const [executiveBriefing, setExecutiveBriefing] = useState<any>(null)
+  const [executiveBriefingLoading, setExecutiveBriefingLoading] = useState(false)
+  const [briefingType, setBriefingType] = useState<'enhanced' | 'executive'>('executive')
   const router = useRouter()
   const supabase = createClient()
 
@@ -34,6 +38,7 @@ export default function DashboardPage() {
       loadThreads()
       loadClassificationStats()
       loadBriefing()
+      loadExecutiveBriefing()
     }
   }, [user, showProcessed])
 
@@ -131,6 +136,25 @@ export default function DashboardPage() {
     }
   }
 
+  const loadExecutiveBriefing = async () => {
+    if (!user) return
+    
+    setExecutiveBriefingLoading(true)
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const response = await fetch(`/api/briefing/executive?date=${today}&type=morning`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setExecutiveBriefing(data.briefing)
+      }
+    } catch (error) {
+      console.error('Error loading executive briefing:', error)
+    } finally {
+      setExecutiveBriefingLoading(false)
+    }
+  }
+
   const statsData = {
     totalThreads: threads?.length || 0,
     actionRequired: threads?.filter(t => t.is_action_required).length || 0,
@@ -196,8 +220,8 @@ export default function DashboardPage() {
           <Tabs defaultValue="briefing" className="w-full">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="briefing" className="flex items-center space-x-1">
-                <TrendingUp className="h-4 w-4" />
-                <span>Daily Briefing</span>
+                <Briefcase className="h-4 w-4" />
+                <span>Intelligence Briefing</span>
               </TabsTrigger>
               <TabsTrigger value="emails">
                 Email Threads 
@@ -219,11 +243,47 @@ export default function DashboardPage() {
             </TabsList>
             
             <TabsContent value="briefing" className="mt-6">
-              <EnhancedDailyBriefingComponent 
-                briefing={briefing}
-                onRefresh={loadBriefing}
-                loading={briefingLoading}
-              />
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant={briefingType === 'executive' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setBriefingType('executive')}
+                    className="flex items-center space-x-1"
+                  >
+                    <Briefcase className="h-4 w-4" />
+                    <span>Executive Assistant</span>
+                  </Button>
+                  <Button
+                    variant={briefingType === 'enhanced' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setBriefingType('enhanced')}
+                    className="flex items-center space-x-1"
+                  >
+                    <TrendingUp className="h-4 w-4" />
+                    <span>Email-Based</span>
+                  </Button>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {briefingType === 'executive' 
+                    ? 'Strategic project and relationship intelligence' 
+                    : 'Topic-organized email briefing'}
+                </div>
+              </div>
+              
+              {briefingType === 'executive' ? (
+                <ExecutiveAssistantBriefingComponent 
+                  briefing={executiveBriefing}
+                  onRefresh={loadExecutiveBriefing}
+                  loading={executiveBriefingLoading}
+                />
+              ) : (
+                <EnhancedDailyBriefingComponent 
+                  briefing={briefing}
+                  onRefresh={loadBriefing}
+                  loading={briefingLoading}
+                />
+              )}
             </TabsContent>
             
             <TabsContent value="emails" className="mt-6">

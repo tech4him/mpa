@@ -49,6 +49,13 @@ export async function GET(req: NextRequest) {
     
     console.log('MSAL response keys:', Object.keys(response || {}))
     console.log('Has access token:', !!response?.accessToken)
+    console.log('Home account ID:', response?.account?.homeAccountId)
+    console.log('Account details:', {
+      homeAccountId: response?.account?.homeAccountId,
+      localAccountId: response?.account?.localAccountId,
+      username: response?.account?.username,
+      environment: response?.account?.environment
+    })
     
     if (!response?.accessToken || !response?.account) {
       throw new Error('Invalid token response')
@@ -63,25 +70,33 @@ export async function GET(req: NextRequest) {
     
     const graphUser = await graphResponse.json()
 
-    // Create or update user in Supabase
-    const supabase = await createClient()
+    // Create or update user in Supabase (use service role to bypass RLS)
+    const supabase = await createClient(true)
     
     // Check if user exists (by azure_ad_id or email)
     const email = graphUser.mail || graphUser.userPrincipalName
-    let { data: existingUser } = await supabase
+    console.log('Looking for user with email:', email)
+    console.log('Looking for user with homeAccountId:', response.account.homeAccountId)
+    
+    let { data: existingUser, error: azureIdError } = await supabase
       .from('users')
-      .select('id')
+      .select('id, azure_ad_id')
       .eq('azure_ad_id', response.account.homeAccountId)
       .single()
     
+    console.log('User found by azure_ad_id:', existingUser)
+    console.log('Azure ID lookup error:', azureIdError)
+    
     // If not found by azure_ad_id, try by email
     if (!existingUser) {
-      const { data: userByEmail } = await supabase
+      const { data: userByEmail, error: emailError } = await supabase
         .from('users')
-        .select('id')
+        .select('id, azure_ad_id')
         .eq('email', email)
         .single()
       existingUser = userByEmail
+      console.log('User found by email:', existingUser)
+      console.log('Email lookup error:', emailError)
     }
 
     // Encrypt refresh token
@@ -91,25 +106,89 @@ export async function GET(req: NextRequest) {
     const encryptedRefreshToken = await encryptRefreshToken(refreshTokenToStore)
 
     if (existingUser) {
+      console.log('Found existing user, updating user record...')
       // Update existing user
-      await supabase
+      const { error: updateUserError } = await supabase
         .from('users')
         .update({
           azure_ad_id: response.account.homeAccountId,
-          encrypted_refresh_token: encryptedRefreshToken,
           updated_at: new Date().toISOString(),
         })
         .eq('id', existingUser.id)
 
-      // Sign in to Supabase
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      if (updateUserError) {
+        console.log('User update error:', updateUserError)
+        throw updateUserError
+      }
+      console.log('User record updated successfully')
+
+      // Create or update email account with token
+      console.log('Looking for existing email account...')
+      const { data: existingAccounts, error: accountLookupError } = await supabase
+        .from('email_accounts')
+        .select('id')
+        .eq('user_id', existingUser.id)
+        .eq('email_address', email)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      const existingAccount = existingAccounts?.[0]
+      console.log('Email account lookup result:', { account: existingAccount, error: accountLookupError })
+
+      const expiresAt = new Date(Date.now() + 3600 * 1000) // 1 hour from now
+
+      if (existingAccount) {
+        console.log('Updating existing email account:', existingAccount.id)
+        const { error: updateError } = await supabase
+          .from('email_accounts')
+          .update({
+            encrypted_access_token: encryptedRefreshToken,
+            access_token_expires_at: expiresAt.toISOString(),
+            sync_status: 'pending'
+          })
+          .eq('id', existingAccount.id)
+        
+        if (updateError) {
+          console.log('Email account update error:', updateError)
+          throw updateError
+        }
+        console.log('Email account updated successfully')
+      } else {
+        console.log('Creating new email account...')
+        const webhookSecret = crypto.randomBytes(32).toString('hex')
+        const { error: insertError } = await supabase.from('email_accounts').insert({
+          user_id: existingUser.id,
+          email_address: email,
+          encrypted_access_token: encryptedRefreshToken,
+          access_token_expires_at: expiresAt.toISOString(),
+          webhook_secret: webhookSecret,
+          sync_status: 'pending'
+        })
+        
+        if (insertError) {
+          console.log('Email account insert error:', insertError)
+          throw insertError
+        }
+        console.log('Email account created successfully')
+      }
+
+      // Sign in to Supabase (use regular client for session cookies)
+      console.log('Attempting to sign in user to Supabase...')
+      const regularSupabase = await createClient() // Regular client for session
+      const { data: signInData, error: signInError } = await regularSupabase.auth.signInWithPassword({
         email: graphUser.mail || graphUser.userPrincipalName,
         password: generateUserPassword(response.account.homeAccountId),
       })
 
+      console.log('Supabase sign in result:', { 
+        success: !signInError, 
+        error: signInError?.message,
+        userId: signInData?.user?.id 
+      })
+
       if (signInError) throw signInError
     } else {
-      // First check if user exists in Supabase Auth
+      console.log('User not found in public.users table, checking auth.users...')
       
       // Try to sign in first (in case user exists in auth but not in our table)
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
@@ -117,9 +196,16 @@ export async function GET(req: NextRequest) {
         password: generateUserPassword(response.account.homeAccountId),
       })
       
+      console.log('Sign in attempt result:', { 
+        success: !signInError, 
+        error: signInError?.message,
+        userId: signInData?.user?.id 
+      })
+      
       let userId: string
       
       if (signInError && signInError.message === 'Invalid login credentials') {
+        console.log('User not in auth, creating new user...')
         // User doesn't exist, create new user
         const { data: authUser, error: signUpError } = await supabase.auth.signUp({
           email: email,
@@ -133,33 +219,52 @@ export async function GET(req: NextRequest) {
           },
         })
 
+        console.log('Sign up result:', { success: !signUpError, error: signUpError?.message })
         if (signUpError) throw signUpError
         userId = authUser.user!.id
       } else if (signInError) {
+        console.log('Sign in failed with unexpected error:', signInError)
         throw signInError
       } else {
         // User exists in auth
+        console.log('User exists in auth, using existing ID:', signInData.user!.id)
         userId = signInData.user!.id
       }
 
       // Create user record
-      await supabase.from('users').insert({
+      console.log('Creating user record for:', userId)
+      const { error: userInsertError } = await supabase.from('users').insert({
         id: userId,
         email: email,
         name: graphUser.displayName,
         role: 'user',
         azure_ad_id: response.account.homeAccountId,
-        encrypted_refresh_token: encryptedRefreshToken,
       })
 
-      // Create email account
+      if (userInsertError) {
+        console.log('User insert error:', userInsertError)
+        throw userInsertError
+      }
+      console.log('User record created successfully')
+
+      // Create email account with token
+      console.log('Creating email account with token...')
       const webhookSecret = crypto.randomBytes(32).toString('hex')
-      await supabase.from('email_accounts').insert({
+      const expiresAt = new Date(Date.now() + 3600 * 1000) // 1 hour from now
+      const { error: emailAccountError } = await supabase.from('email_accounts').insert({
         user_id: userId,
         email_address: email,
+        encrypted_access_token: encryptedRefreshToken,
+        access_token_expires_at: expiresAt.toISOString(),
         webhook_secret: webhookSecret,
         sync_status: 'pending',
       })
+
+      if (emailAccountError) {
+        console.log('Email account insert error:', emailAccountError)
+        throw emailAccountError
+      }
+      console.log('Email account created successfully')
     }
 
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard`)
