@@ -18,12 +18,13 @@ export async function POST(req: NextRequest) {
       final_sent, 
       feedback_score, 
       edit_type, 
-      thread_id 
+      thread_id,
+      feedback_reason
     } = body
 
-    if (!original_draft || !final_sent) {
+    if (!original_draft) {
       return NextResponse.json(
-        { error: 'Missing required fields: original_draft, final_sent' }, 
+        { error: 'Missing required field: original_draft' }, 
         { status: 400 }
       )
     }
@@ -35,10 +36,12 @@ export async function POST(req: NextRequest) {
         user_id: user.id,
         thread_id,
         original_draft,
-        final_sent,
+        final_sent: final_sent || '',
         feedback_score: feedback_score || 0,
         edit_type: edit_type || 'manual_edit',
-        diff_analysis: {}, // Required field
+        diff_analysis: { 
+          feedback_reason: feedback_reason || null 
+        }, // Store feedback reason in diff_analysis
         created_at: new Date().toISOString()
       })
       .select()

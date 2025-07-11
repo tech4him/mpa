@@ -22,7 +22,9 @@ import {
   User,
   Copy,
   ExternalLink,
-  Mail
+  Mail,
+  Trash2,
+  X
 } from 'lucide-react'
 
 interface AIDraft {
@@ -67,6 +69,8 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
   const [activeTab, setActiveTab] = useState('overview')
   const [editingDraft, setEditingDraft] = useState<string | null>(null)
   const [editedContent, setEditedContent] = useState('')
+  const [feedbackDialog, setFeedbackDialog] = useState<{open: boolean, draftId: string, action: 'reject' | 'delete'} | null>(null)
+  const [feedbackReason, setFeedbackReason] = useState('')
 
   // Load AI insights for this thread
   useEffect(() => {
@@ -286,7 +290,7 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
     }
   }
 
-  const rejectDraft = async (draftId: string) => {
+  const rejectDraft = async (draftId: string, reason?: string) => {
     try {
       const response = await fetch(`/api/drafts/${draftId}`, {
         method: 'PATCH',
@@ -295,6 +299,23 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
       })
 
       if (response.ok) {
+        // Create negative learning sample
+        const draft = drafts.find(d => d.id === draftId)
+        if (draft) {
+          await fetch('/api/learning/samples', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              original_draft: draft.content,
+              final_sent: '', // No final version since it was rejected
+              feedback_score: -1, // Negative feedback
+              edit_type: 'rejected',
+              thread_id: threadId,
+              feedback_reason: reason || 'Draft rejected by user'
+            })
+          })
+        }
+
         setDrafts(prev => prev.map(draft => 
           draft.id === draftId ? { ...draft, status: 'rejected' } : draft
         ))
@@ -302,6 +323,43 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
       }
     } catch (error) {
       console.error('Failed to reject draft:', error)
+    }
+  }
+
+  const deleteDraft = async (draftId: string, reason?: string) => {
+    if (!confirm('Are you sure you want to delete this AI suggestion? This will help improve future suggestions.')) {
+      return
+    }
+
+    try {
+      // Create negative learning sample before deleting
+      const draft = drafts.find(d => d.id === draftId)
+      if (draft) {
+        await fetch('/api/learning/samples', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            original_draft: draft.content,
+            final_sent: '', // No final version since it was deleted
+            feedback_score: -2, // Very negative feedback for deletion
+            edit_type: 'deleted_incorrect',
+            thread_id: threadId,
+            feedback_reason: reason || 'Draft deleted as incorrect/unhelpful'
+          })
+        })
+      }
+
+      const response = await fetch(`/api/drafts/${draftId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (response.ok) {
+        setDrafts(prev => prev.filter(draft => draft.id !== draftId))
+        onAction?.('draft_deleted', { draftId })
+      }
+    } catch (error) {
+      console.error('Failed to delete draft:', error)
     }
   }
 
@@ -444,6 +502,30 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
     if (confidence >= 0.8) return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
     if (confidence >= 0.6) return 'text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20'
     return 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20'
+  }
+
+  const openFeedbackDialog = (draftId: string, action: 'reject' | 'delete') => {
+    setFeedbackDialog({ open: true, draftId, action })
+    setFeedbackReason('')
+  }
+
+  const closeFeedbackDialog = () => {
+    setFeedbackDialog(null)
+    setFeedbackReason('')
+  }
+
+  const submitFeedback = async () => {
+    if (!feedbackDialog) return
+
+    const { draftId, action } = feedbackDialog
+    
+    if (action === 'reject') {
+      await rejectDraft(draftId, feedbackReason)
+    } else if (action === 'delete') {
+      await deleteDraft(draftId, feedbackReason)
+    }
+    
+    closeFeedbackDialog()
   }
 
   return (
@@ -646,7 +728,7 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
                             <span>Approve</span>
                           </Button>
                           <Button
-                            onClick={() => rejectDraft(draft.id)}
+                            onClick={() => openFeedbackDialog(draft.id, 'reject')}
                             size="sm"
                             variant="outline"
                             className="flex items-center space-x-1"
@@ -662,6 +744,15 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
                           >
                             <Edit3 className="h-4 w-4" />
                             <span>Edit</span>
+                          </Button>
+                          <Button
+                            onClick={() => openFeedbackDialog(draft.id, 'delete')}
+                            size="sm"
+                            variant="outline"
+                            className="flex items-center space-x-1 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span>Delete</span>
                           </Button>
                         </div>
                       )}
@@ -724,8 +815,19 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
                       )}
                       
                       {draft.status === 'rejected' && (
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                          ❌ Draft rejected
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            ❌ Draft rejected
+                          </div>
+                          <Button
+                            onClick={() => openFeedbackDialog(draft.id, 'delete')}
+                            size="sm"
+                            variant="outline"
+                            className="flex items-center space-x-1 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span>Delete</span>
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -847,6 +949,54 @@ export function AIEmailAssistant({ threadId, onAction }: AIEmailAssistantProps) 
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Feedback Dialog */}
+      {feedbackDialog?.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full mx-4">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">
+                  {feedbackDialog.action === 'reject' ? 'Reject AI Suggestion' : 'Delete AI Suggestion'}
+                </h3>
+                <Button onClick={closeFeedbackDialog} variant="ghost" size="sm">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              <div className="mb-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  {feedbackDialog.action === 'reject' 
+                    ? 'Help us improve by telling us why this suggestion isn\'t helpful:'
+                    : 'Help us improve by telling us why this suggestion should be deleted:'}
+                </p>
+                
+                <textarea
+                  value={feedbackReason}
+                  onChange={(e) => setFeedbackReason(e.target.value)}
+                  placeholder={feedbackDialog.action === 'reject' 
+                    ? 'e.g., Wrong tone, incorrect information, not relevant to the thread...'
+                    : 'e.g., Completely wrong, offensive content, not helpful at all...'}
+                  className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  rows={3}
+                />
+              </div>
+              
+              <div className="flex items-center justify-end space-x-3">
+                <Button onClick={closeFeedbackDialog} variant="outline">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={submitFeedback}
+                  className={feedbackDialog.action === 'delete' ? 'bg-red-600 hover:bg-red-700' : ''}
+                >
+                  {feedbackDialog.action === 'reject' ? 'Reject' : 'Delete'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

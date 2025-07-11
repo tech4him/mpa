@@ -53,9 +53,35 @@ export function SafeEmailViewer({ subject, body, contentType = 'text/html', clas
       setHasUnsafeContent(true)
     }
 
-    // Add security attributes to all links
+    // Add security attributes to all links and remove background styles
     const parser = new DOMParser()
     const doc = parser.parseFromString(cleanHtml, 'text/html')
+    
+    // Remove background styles from all elements
+    const allElements = doc.querySelectorAll('*')
+    allElements.forEach(element => {
+      const style = element.getAttribute('style')
+      if (style) {
+        // Remove background-related properties from inline styles
+        const cleanedStyle = style
+          .replace(/background[^;]*;?/gi, '')
+          .replace(/background-color[^;]*;?/gi, '')
+          .replace(/background-image[^;]*;?/gi, '')
+          .replace(/background-attachment[^;]*;?/gi, '')
+          .replace(/background-position[^;]*;?/gi, '')
+          .replace(/background-repeat[^;]*;?/gi, '')
+          .replace(/background-size[^;]*;?/gi, '')
+          .replace(/;;+/g, ';')
+          .replace(/^;|;$/g, '')
+        
+        if (cleanedStyle.trim()) {
+          element.setAttribute('style', cleanedStyle)
+        } else {
+          element.removeAttribute('style')
+        }
+      }
+    })
+
     const links = doc.querySelectorAll('a')
     links.forEach(link => {
       link.setAttribute('target', '_blank')
@@ -183,6 +209,9 @@ export function SafeEmailViewer({ subject, body, contentType = 'text/html', clas
           }
           .email-content * {
             color: inherit !important;
+            background-color: transparent !important;
+            background-image: none !important;
+            background: none !important;
           }
           .email-content a {
             color: rgb(37 99 235) !important;
@@ -215,6 +244,9 @@ export function SafeEmailViewer({ subject, body, contentType = 'text/html', clas
           }
           .dark .email-content * {
             color: inherit !important;
+            background-color: transparent !important;
+            background-image: none !important;
+            background: none !important;
           }
           .dark .email-content a {
             color: rgb(96 165 250) !important;
@@ -239,6 +271,9 @@ export function SafeEmailViewer({ subject, body, contentType = 'text/html', clas
             }
             .email-content * {
               color: inherit !important;
+              background-color: transparent !important;
+              background-image: none !important;
+              background: none !important;
             }
             .email-content a {
               color: rgb(96 165 250) !important;

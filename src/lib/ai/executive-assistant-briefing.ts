@@ -243,6 +243,8 @@ const executiveAssistantAgent = new Agent({
   tools: [getProjectPortfolioStatus, getRelationshipIntelligence, getUpcomingDecisions],
   instructions: `You are an autonomous Executive Assistant AI for a senior leader at Mission Mutual, a nonprofit organization.
 
+CRITICAL: You must be completely truthful and never create, infer, or hallucinate information. Only use data explicitly provided to you.
+
 You embody the qualities of an exceptional Executive Assistant:
 
 **TRUSTED STEWARD**: You protect time, prioritize effectively, and manage access intelligently
@@ -250,6 +252,13 @@ You embody the qualities of an exceptional Executive Assistant:
 **RELATIONSHIP MANAGER**: You track stakeholder engagement and maintain alignment
 **OPERATIONAL ANCHOR**: You ensure follow-through and maintain organizational excellence
 **MISSION-MINDED**: You understand nonprofit dynamics and support the organization's ministry
+
+ACCURACY REQUIREMENTS:
+- Never create job titles, roles, or departments not present in the provided data
+- Never infer project status, budgets, or approvals not explicitly stated
+- Never create contact names or stakeholder information not provided
+- If information is missing, clearly state "requires verification" rather than guessing
+- Only suggest contacting people who are explicitly identified in the stakeholder data
 
 Your briefings should think PROJECTS and RELATIONSHIPS first, not emails first.
 
@@ -312,6 +321,13 @@ Generate briefings with this structure:
 }
 
 CRITICAL: Focus on synthesis across communications, not individual email summaries. Think like an EA who sees patterns, anticipates needs, and protects executive bandwidth.
+
+VALIDATION CHECKLIST:
+- Every project mentioned must exist in the provided active_projects data
+- Every stakeholder mentioned must exist in the provided key_stakeholders data  
+- Every recommended contact must be identified in the stakeholder data with actual contact information
+- No job titles should be created - only use titles present in the data
+- Project statuses must come from the actual data, not assumptions
 
 Be specific, actionable, and strategic. Prioritize ruthlessly - only include what truly needs executive attention.`
 })
@@ -410,23 +426,29 @@ export class ExecutiveAssistantBriefingGenerator {
     return `
       Generate a comprehensive ${briefingType} briefing for a senior leader at Mission Mutual.
       
-      CONTEXT:
+      CRITICAL INSTRUCTION: Only use information explicitly provided in the context below. DO NOT make up, infer, or create any information that is not directly present in the data. If information is missing, state that it needs to be verified rather than creating fictional details.
+      
+      CONTEXT DATA (USE ONLY THIS INFORMATION):
       Active Projects: ${JSON.stringify(context.active_projects)}
       Key Stakeholders: ${JSON.stringify(context.key_stakeholders)}
       Recent Communications: ${JSON.stringify(context.recent_communications)}
       
+      STRICT RULES:
+      - Only reference projects that exist in the active_projects data
+      - Only mention stakeholders that appear in the key_stakeholders data
+      - Do not create job titles, departments, or organizational roles not present in the data
+      - If budget, approval, or status information is not in the data, do not mention it
+      - When recommending actions, only suggest contacting people who are identified in the stakeholder data
+      - If a project status is unclear from the data, state "status requires verification" rather than making assumptions
+      
       FOCUS AREAS:
-      1. What needs IMMEDIATE executive attention today
-      2. Project health and cross-project insights
-      3. Relationship management and stakeholder engagement
-      4. Strategic decisions and upcoming deadlines
-      5. Gaps, risks, and opportunities
+      1. What needs IMMEDIATE executive attention based ONLY on the provided data
+      2. Project health insights derived ONLY from the context data
+      3. Stakeholder communication patterns ONLY from provided information
+      4. Gaps where information is missing that should be clarified
       
-      Think like a trusted EA who has been with this executive for years. 
-      Synthesize information across projects and relationships.
-      Be specific, actionable, and strategic.
-      
-      Only include items that truly need executive-level attention.
+      Think like a trusted EA who only reports verified information and clearly identifies when additional clarification is needed.
+      Be specific and actionable, but never create information not present in the context.
     `
   }
 
@@ -480,15 +502,60 @@ export class ExecutiveAssistantBriefingGenerator {
 
   private parseAgentResponse(response: any): any {
     try {
+      let parsedResponse
       if (typeof response === 'string') {
         const cleanResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-        return JSON.parse(cleanResponse)
+        parsedResponse = JSON.parse(cleanResponse)
+      } else {
+        parsedResponse = response
       }
-      return response
+      
+      // Validate the response for hallucination
+      return this.validateBriefingResponse(parsedResponse)
     } catch (error) {
       console.error('Failed to parse briefing response:', error)
       return this.getFallbackBriefingData()
     }
+  }
+
+  /**
+   * Validate briefing response to ensure no hallucinated information
+   */
+  private validateBriefingResponse(briefingData: any): any {
+    // Add validation flags for suspicious content
+    const validatedData = { ...briefingData }
+    
+    // Check for common hallucination patterns
+    if (validatedData.immediate_attention) {
+      validatedData.immediate_attention = validatedData.immediate_attention.map((item: any) => {
+        // Flag potential hallucinations
+        if (item.recommended_action?.includes('IT Director') && 
+            !this.hasValidStakeholder('IT Director')) {
+          item.validation_warning = 'Contact verification needed - role may not exist'
+        }
+        if (item.recommended_action?.includes('HR Director') && 
+            !this.hasValidStakeholder('HR Director')) {
+          item.validation_warning = 'Contact verification needed - role may not exist'
+        }
+        if (item.description?.includes('budget approval') && 
+            !item.description?.includes('verification needed')) {
+          item.validation_warning = 'Status requires verification from source'
+        }
+        return item
+      })
+    }
+    
+    return validatedData
+  }
+
+  /**
+   * Check if a stakeholder role exists in our data
+   */
+  private hasValidStakeholder(role: string): boolean {
+    // This would check against actual stakeholder data
+    // For now, return false for common non-existent roles
+    const commonFakeRoles = ['IT Director', 'HR Director', 'CTO', 'CFO']
+    return !commonFakeRoles.includes(role)
   }
 
   private generateFallbackBriefing(briefingType: string): ExecutiveAssistantBriefing {

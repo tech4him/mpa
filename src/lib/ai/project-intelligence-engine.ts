@@ -260,6 +260,8 @@ const projectIntelligenceAgent = new Agent({
   tools: [analyzeProjectHealth, detectProjectRisks, analyzeStakeholderEngagement],
   instructions: `You are the Project Intelligence Agent for an autonomous Executive Assistant system.
 
+CRITICAL: You must be completely truthful and never create, infer, or hallucinate information. Only use data explicitly provided by the tools and context.
+
 Your role is to think like a seasoned, strategic Executive Assistant who:
 
 1. **ANTICIPATES NEEDS**: Identifies issues before they become problems
@@ -267,6 +269,13 @@ Your role is to think like a seasoned, strategic Executive Assistant who:
 3. **PROTECTS TIME**: Flags what truly needs executive attention vs. what can be handled
 4. **MANAGES RELATIONSHIPS**: Tracks stakeholder engagement and communication health
 5. **THINKS STRATEGICALLY**: Provides insights that help with decision-making
+
+ACCURACY REQUIREMENTS:
+- Never create project details not present in the tool results
+- Never infer stakeholder roles, titles, or contact information not provided
+- Never create budget, approval, or status information not explicitly stated
+- If information is missing from tool results, state "requires verification" rather than guessing
+- Only suggest contacting people who are identified in the stakeholder tool results
 
 When analyzing projects and communications, focus on:
 
@@ -330,11 +339,19 @@ export class ProjectIntelligenceEngine {
       const prompt = `
         Analyze the current project portfolio and stakeholder relationships for user ${this.userId}.
         
+        CRITICAL: Only use information returned by the analysis tools. Do not create, infer, or assume any information not explicitly provided by the tool results.
+        
         Generate a comprehensive executive briefing that prioritizes:
-        1. Items requiring immediate executive attention
-        2. Project health and risk assessment
-        3. Stakeholder relationship insights
-        4. Strategic recommendations
+        1. Items requiring immediate executive attention (based ONLY on tool data)
+        2. Project health and risk assessment (from tool results only)
+        3. Stakeholder relationship insights (from tool data only)
+        4. Strategic recommendations (based only on verified information)
+        
+        STRICT RULES:
+        - Only reference projects returned by analyzeProjectHealth tool
+        - Only mention stakeholders returned by analyzeStakeholderEngagement tool
+        - Never create job titles, roles, or contact information not in tool results
+        - If information is missing, state "requires verification" rather than assuming
         
         Focus on what a busy executive NEEDS to know and act on, not just status updates.
       `
@@ -418,16 +435,47 @@ export class ProjectIntelligenceEngine {
 
   private parseAgentResponse(response: any): any {
     try {
+      let parsedResponse
       if (typeof response === 'string') {
         // Remove markdown code blocks if present
         const cleanResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-        return JSON.parse(cleanResponse)
+        parsedResponse = JSON.parse(cleanResponse)
+      } else {
+        parsedResponse = response
       }
-      return response
+      
+      // Validate for hallucination
+      return this.validateIntelligenceResponse(parsedResponse)
     } catch (error) {
       console.error('Failed to parse agent response:', error)
       return this.getFallbackIntelligence()
     }
+  }
+
+  /**
+   * Validate intelligence response to prevent hallucination
+   */
+  private validateIntelligenceResponse(intelligenceData: any): any {
+    const validated = { ...intelligenceData }
+    
+    // Add validation warnings for suspicious content
+    if (validated.attention_items) {
+      validated.attention_items = validated.attention_items.map((item: any) => {
+        // Flag non-existent roles
+        if (item.recommended_action?.includes('Director') && 
+            !item.recommended_action?.includes('verification needed')) {
+          item.validation_warning = 'Contact role requires verification'
+        }
+        // Flag budget/approval references without context
+        if ((item.description?.includes('budget') || item.description?.includes('approval')) &&
+            !item.description?.includes('verification needed')) {
+          item.validation_warning = 'Status requires verification from source'
+        }
+        return item
+      })
+    }
+    
+    return validated
   }
 
   private getFallbackIntelligence(): any {
