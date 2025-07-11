@@ -1,6 +1,6 @@
-# Mission Mutual AI Assistant
+# AI Executive Assistant
 
-An intelligent email assistant that monitors Mission Mutual staff's Outlook 365 accounts, provides thread-aware intelligence, learns from user behavior, and automates routine tasks while maintaining full user control and organizational security.
+A comprehensive AI-powered work orchestration platform that acts as a world-class Executive Assistant, managing communications, maintaining relationships, tracking commitments, and keeping you focused on what matters most. Transform your productivity by letting AI handle the operational overhead while you focus on strategic leadership.
 
 ## Architecture Overview
 
@@ -97,30 +97,35 @@ npm run dev
 
 ## Key Features
 
-### 1. Intelligent Thread Monitoring
-- Real-time webhook integration with Outlook 365
-- Thread context awareness across entire conversation history
-- Smart categorization (ACTION_REQUIRED, FYI_ONLY, FINANCIAL, etc.)
+### 1. Executive Command Center
+- **Daily Intelligence Dashboard**: Morning briefings with need-to-know, need-to-do, and anomalies
+- **Priority Communications Hub**: AI-categorized and context-aware message management
+- **Commitment Tracking**: Never drop a ball - track all promises and deliverables
+- **Relationship Health Monitoring**: Alert before professional relationships go cold
 
-### 2. Context-Aware Response Drafting
-- AI-generated drafts based on thread history
-- Personality learning from user's previous emails
-- Recipient-specific tone adaptation
+### 2. Intelligent Communication Hub
+- **Context-Aware Drafts**: Responses that understand conversation history and relationship dynamics
+- **Universal Search**: Find anything across all platforms with natural language queries
+- **Multi-Platform Integration**: Email, Teams, SharePoint, OneDrive, ClickUp, and more
+- **Automated Routine Handling**: Handle standard responses while surfacing exceptions
 
-### 3. Learning & Feedback System
-- Tracks user edits to improve future drafts
-- Pattern recognition for common corrections
-- Continuous improvement based on feedback
+### 3. Proactive Work Intelligence
+- **Project Context Awareness**: Understand ongoing initiatives across all platforms
+- **Anomaly Detection**: Flag unusual patterns and things that need attention
+- **Follow-up Management**: Track what you're waiting for and remind when needed
+- **Meeting Preparation**: Auto-generate agendas and briefs based on context
 
-### 4. Daily Intelligence Briefing
-- 7 AM daily email summary
-- Smart prioritization based on sender importance
-- Thread status tracking and action summaries
+### 4. Universal Work Orchestration
+- **Cross-Platform Context**: Unified intelligence layer across all work tools
+- **Smart Task Management**: Connect communications to projects and deliverables
+- **Calendar Intelligence**: Optimize scheduling and protect deep work time
+- **Workflow Automation**: Handle routine processes while surfacing exceptions
 
-### 5. Task & Commitment Extraction
-- Automatic detection of tasks in email threads
-- Due date recognition and assignment logic
-- Integration with external tools (ClickUp planned)
+### 5. Privacy-First Learning System
+- **Personal Knowledge Base**: Your data never mixes with other users
+- **Continuous Improvement**: Learn from your edits and feedback
+- **Contextual Memory**: Remember project details and communication preferences
+- **Adaptive Intelligence**: Improve understanding of your work patterns over time
 
 ## Project Structure
 
@@ -189,4 +194,4 @@ See the [PRD/SRD document](./docs/PRD-SRD.md) for detailed requirements and syst
 
 ## License
 
-This project is private and proprietary to Mission Mutual.
+This project is private and proprietary.

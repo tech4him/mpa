@@ -12,7 +12,7 @@ export function DashboardHeader() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center">
             <h1 className="text-xl font-semibold text-gray-900">
-              Mission Mutual AI Assistant
+              AI Executive Assistant
             </h1>
           </div>
 

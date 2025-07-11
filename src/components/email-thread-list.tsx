@@ -43,10 +43,11 @@ interface EmailThreadListProps {
   threads: EmailThread[]
   showProcessed?: boolean
   onThreadUpdated?: () => void
+  filterActionRequired?: boolean
 }
 
-export function EmailThreadList({ threads, showProcessed = false, onThreadUpdated }: EmailThreadListProps) {
-  const [selectedCategory, setSelectedCategory] = useState('all')
+export function EmailThreadList({ threads, showProcessed = false, onThreadUpdated, filterActionRequired = false }: EmailThreadListProps) {
+  const [selectedCategory, setSelectedCategory] = useState(filterActionRequired ? 'ACTION_REQUIRED' : 'all')
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle')
   const [syncStats, setSyncStats] = useState<any>(null)
   const [mounted, setMounted] = useState(false)
@@ -62,7 +63,8 @@ export function EmailThreadList({ threads, showProcessed = false, onThreadUpdate
   const filteredThreads = threads.filter(thread => {
     if (selectedCategory === 'all') return true
     if (selectedCategory === 'unread') return thread.has_unread
-    if (selectedCategory === 'action') return thread.is_action_required
+    if (selectedCategory === 'action') return thread.is_action_required && !thread.is_processed
+    if (selectedCategory === 'ACTION_REQUIRED') return thread.category === 'ACTION_REQUIRED' && !thread.is_processed
     return thread.category === selectedCategory
   })
 

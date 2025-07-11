@@ -1,62 +1,68 @@
 # Product Requirements Document (PRD)
-## Mission Mutual Personal AI Assistant - MVP
+## AI Executive Assistant - MVP
 
 ### Executive Summary
-A proactive AI assistant that understands your complete work context across Microsoft 365 platforms (Email, Teams, SharePoint, OneDrive), learns your communication patterns, and autonomously handles routine tasks while providing intelligent daily briefings and draft responses that require your approval before sending.
+A comprehensive AI-powered work orchestration platform that acts as a world-class Executive Assistant, managing communications, maintaining relationships, tracking commitments, and keeping you focused on what matters most. This system handles ALL aspects of executive work overhead, transforming productivity across communications, project management, and strategic decision-making.
 
 ### Vision Statement
-Create a truly intelligent personal assistant that goes beyond basic email automation - one that understands your projects, relationships, and communication style across all work platforms, proactively identifies what needs your attention, and handles routine tasks autonomously while keeping you in complete control of important decisions.
+**"Your AI should handle the operational overhead so you can focus on strategic leadership and meaningful relationships."**
+
+Create a universal AI Executive Assistant that understands your complete work context across all platforms, learns your communication patterns, and autonomously manages routine work while providing intelligent daily briefings and proactive suggestions. This is about transforming executive productivity across all aspects of your role, not just email management.
 
 ### Success Metrics
-- **Intelligence**: 90% context accuracy in daily briefings (understanding what actually matters)
-- **Autonomy**: 70% of routine emails handled automatically without user intervention
-- **Proactivity**: 80% of action items identified before user notices them
-- **Quality**: 85%+ draft acceptance rate with minimal edits
+- **Communication Overhead**: Reduce daily email management from 4 hours to 45 minutes
+- **Zero Dropped Balls**: 100% of commitments tracked and followed up
+- **Relationship Health**: No professional relationships go cold unnoticed
+- **Context Switching**: 80% reduction in jumping between platforms
+- **Strategic Time**: Triple available time for strategic thinking and decision-making
+- **Draft Quality**: 85%+ acceptance rate with minimal edits
 - **Privacy**: Zero cross-user data leakage, complete user data isolation
-- **Efficiency**: Reduce daily "email management time" from 3 hours to 45 minutes
+- **Proactivity**: 80% of action items identified before user notices them
 
 ### User Personas
 
-**Primary: Tom Lucas (VP Business Operations)**
-- Receives 100+ emails daily across multiple initiatives
-- Needs to maintain relationships with board members, donors, and partners
-- Values efficiency but requires maintaining personal touch
-- Technical enough to configure advanced features
+**Primary: Executive Leaders**
+- C-suite executives, VPs, and senior managers
+- Manage 50-200+ communications daily across multiple channels
+- Need to maintain relationships with board members, clients, partners, and team members
+- Balance strategic thinking with operational oversight
+- Value efficiency but require maintaining personal touch and relationship quality
 
-**Secondary: Finance & Operations Team**
-- Anthony Keeler: Financial communications, approval workflows
-- Julie Riggs: Coordination and scheduling
-- Andrew Cleveland: Data and reporting communications
+**Secondary: High-Performance Knowledge Workers**
+- Directors, senior managers, and team leads
+- Coordinate multiple projects and stakeholder relationships
+- Need to stay on top of commitments and deadlines
+- Require context-aware communication across different relationship types
 
 ### Core Features (MVP Scope)
 
-#### 1. Cross-Platform Intelligence Foundation
-- **Personal Knowledge Base**: Private, encrypted vector store per user
-- **Multi-Platform Context**: Email, Teams, SharePoint, OneDrive, Google Drive integration
-- **Relationship Intelligence**: Learn communication patterns with each person/organization
+#### 1. Executive Command Center
+- **Daily Intelligence Dashboard**: Morning briefings with need-to-know, need-to-do, and anomalies
+- **Priority Communications Hub**: AI-categorized and context-aware email management
+- **Commitment Tracking**: Never drop a ball - track all promises and deliverables
+- **Relationship Health Monitoring**: Alert before relationships go cold
+- **Universal Search**: "Show me everything about the AWS migration" across all platforms
+
+#### 2. Intelligent Communication Hub
+- **Context-Aware Drafts**: Responses that understand conversation history and relationship dynamics
+- **Learning from Edits**: Continuously improve based on your communication style
+- **Multi-Platform Integration**: Email, Teams, SharePoint, OneDrive, ClickUp, and more
+- **Automated Routine Handling**: Handle routine responses autonomously with approval
+- **Relationship Intelligence**: Adapt tone and approach based on recipient patterns
+
+#### 3. Proactive Work Intelligence
 - **Project Context Awareness**: Understand ongoing initiatives from documents and conversations
-- **Communication Style Learning**: Analyze your writing patterns, tone, and preferences
-
-#### 2. Proactive Daily Intelligence
-- **Morning Intelligence Briefing**: What you need to know, need to do, and anomalies requiring attention
-- **Priority Filtering**: Surface only what actually matters, hide routine noise
 - **Anomaly Detection**: Flag unusual patterns, urgent items, or things breaking normal rules
-- **Action Item Identification**: Extract commitments and deadlines across all platforms
-- **Context-Rich Summaries**: Understand why things are important, not just what happened
+- **Action Item Extraction**: Automatically identify commitments and deadlines across platforms
+- **Follow-up Management**: Track what you're waiting for and remind when action is needed
+- **Meeting Preparation**: Auto-generate agendas and brief materials based on context
 
-#### 3. Autonomous Task Handling
-- **Rule-Based Automation**: Handle routine emails (admin notifications, confirmations) automatically
-- **Smart Filing**: Organize emails/documents based on project and content understanding
-- **Follow-up Management**: Track commitments and remind when action is needed
-- **Meeting Coordination**: Suggest times, prepare agendas based on context
-- **Document Organization**: Auto-file documents in correct SharePoint/Drive locations
-
-#### 4. Intelligent Draft Generation
-- **Full Context Drafts**: Consider conversation history, project status, and relationship dynamics
-- **Human-in-Loop**: Always requires approval before sending anything important
-- **Style Consistency**: Match your communication style for each recipient type
-- **Fact Verification**: Check claims against your knowledge base and documents
-- **Draft Explanations**: Show why AI chose this approach and what context it considered
+#### 4. Universal Work Orchestration
+- **Cross-Platform Context**: Unified intelligence layer across all work tools
+- **Smart Task Management**: Connect emails to projects, people, and deliverables
+- **Calendar Intelligence**: Optimize scheduling and protect deep work time
+- **Document Organization**: Auto-file and relate documents to projects and people
+- **Workflow Automation**: Handle routine processes while surfacing exceptions
 
 #### 5. Privacy-First Learning System
 - **Personal Vector Store**: Your data never mixes with other users
@@ -74,19 +80,26 @@ Create a truly intelligent personal assistant that goes beyond basic email autom
 
 ### User Workflows
 
-#### Daily Intelligence Workflow (Primary)
-1. **Morning Briefing** (7 AM): Receive intelligent summary of what needs attention
-2. **Priority Review**: Review AI-identified urgent items and anomalies first
-3. **Draft Approval**: Review context-aware drafts with explanations, approve/edit/reject
-4. **Autonomous Monitoring**: AI handles routine items automatically, surfaces only exceptions
-5. **End-of-Day Summary**: Brief recap of what was handled and what's pending
+#### Executive Command Center Workflow (Primary)
+1. **Morning Intelligence Dashboard**: Single view of what needs attention, what's ready for approval, and what's been handled
+2. **Priority Communications**: Review AI-categorized urgent items with full context and suggested actions
+3. **Commitment Review**: See all promises you've made and what you're waiting for from others
+4. **One-Click Actions**: Approve drafts, schedule follow-ups, delegate tasks, or request more context
+5. **Relationship Health**: Monitor communication patterns and get proactive touch-point suggestions
 
-#### Proactive Assistant Workflow
-1. **Context Detection**: AI notices project deadlines, follow-up needs, or relationship patterns
-2. **Proactive Suggestions**: "You usually follow up with X after 3 days, draft ready"
-3. **Anomaly Alerts**: "Client Y usually responds within 24 hours, it's been 3 days"
-4. **Action Preparation**: Pre-draft responses, prepare meeting agendas, organize documents
-5. **User Decision**: Simple approve/modify/delegate actions
+#### Intelligent Communication Workflow
+1. **Context-Aware Drafts**: AI generates responses using full conversation history and relationship context
+2. **Universal Search**: "Show me everything about the client presentation" across all platforms
+3. **Learning Integration**: System learns from your edits and improves future suggestions
+4. **Automated Routine**: Handle standard responses automatically while surfacing exceptions
+5. **Cross-Platform Sync**: Actions taken flow across email, tasks, calendar, and documents
+
+#### Proactive Work Intelligence Workflow
+1. **Anomaly Detection**: AI flags unusual patterns, overdue items, or relationship health issues
+2. **Commitment Tracking**: Never drop a ball - track all promises and deliverables automatically
+3. **Project Context**: Understand how each communication relates to ongoing initiatives
+4. **Meeting Preparation**: Auto-generate agendas and brief materials based on recent context
+5. **Follow-up Management**: Track what you're waiting for and remind when action is needed
 
 #### Continuous Learning Workflow
 1. **Pattern Recognition**: AI observes your communication preferences and decision patterns
@@ -112,33 +125,33 @@ Create a truly intelligent personal assistant that goes beyond basic email autom
 ---
 
 # System Requirements Document (SRD)
-## Mission Mutual Personal AI Assistant - MVP
+## AI Executive Assistant - MVP
 
 ### 1. System Architecture
 
 #### 1.1 High-Level Architecture
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Cross-Platform Data Sources                  │
+│                    Universal Work Data Sources                   │
 ├─────────────────┬─────────────────┬─────────────────┬───────────┤
-│   Microsoft 365 │   SharePoint    │   OneDrive      │ Google    │
-│   (Email/Teams) │   (Documents)   │   (Files)       │ Drive     │
+│   Microsoft 365 │   SharePoint    │   ClickUp/Tasks │ Google    │
+│   (Email/Teams) │   (Documents)   │   (Projects)    │ Drive     │
 └─────────────────┴─────────────────┴─────────────────┴───────────┘
                                 │
                     ┌───────────▼───────────┐
-                    │   Data Ingestion      │
-                    │   Pipeline            │
+                    │   AI Orchestration    │
+                    │   Engine              │
                     └───────────┬───────────┘
                                 │
 ┌─────────────────────┐     ┌───▼────────────────────┐     ┌─────────────────────┐
-│   Personal AI       │────▶│  Intelligence Engine   │────▶│ Personal Vector     │
-│   Dashboard         │     │  (Context + Learning)  │     │ Store (Per User)    │
+│   Executive Command │────▶│  Intelligence Engine   │────▶│ Personal Vector     │
+│   Center UI         │     │  (Context + Learning)  │     │ Store (Per User)    │
 │   (Next.js)         │     │                        │     │ (Encrypted)         │
 └─────────────────────┘     └───┬────────────────────┘     └─────────────────────┘
                                 │
                     ┌───────────▼───────────┐
-                    │   Proactive Actions   │
-                    │   Engine              │
+                    │   Proactive Work      │
+                    │   Intelligence        │
                     └───────────┬───────────┘
                                 │
                     ┌───────────▼───────────┐
@@ -148,14 +161,16 @@ Create a truly intelligent personal assistant that goes beyond basic email autom
 ```
 
 #### 1.2 Technology Stack
-- **Frontend**: Next.js 15 (App Router), Tailwind CSS, Shadcn/ui
+- **Frontend**: Next.js 15 (App Router), Tailwind CSS v4, Shadcn/ui
 - **Backend**: Vercel Edge Functions, Node.js
 - **Database**: Supabase (PostgreSQL) with Row-Level Security
-- **AI Platform**: OpenAI GPT-4o with Function Calling
+- **AI Platform**: OpenAI GPT-4o with Agents Framework
 - **Vector Storage**: Per-user OpenAI Vector Stores (privacy-first)
-- **Cross-Platform APIs**: 
+- **Integrations**: 
   - Microsoft Graph API (Email, Teams, SharePoint, OneDrive)
   - Google Drive API (documents and files)
+  - ClickUp API (task management)
+  - Extensible architecture for additional tools
 - **Queue System**: Upstash QStash for async processing
 - **Authentication**: Supabase Auth with Microsoft OAuth 2.0
 - **Encryption**: AES-256-GCM for sensitive data
@@ -503,23 +518,26 @@ import { Agent, tool } from '@openai/agents';
 
 // Configure main email processing agent
 const emailAgent = new Agent({
-  name: 'MPA Email Assistant',
+  name: 'Executive Assistant Agent',
   model: 'gpt-4o',
-  instructions: `You are an intelligent email assistant for Mission Mutual.
-    Always verify facts against organizational knowledge.
+  instructions: `You are an intelligent executive assistant that understands the user's complete work context.
+    Always verify facts against the user's personal knowledge base.
     Reference specific projects, people, and past decisions.
-    Maintain consistent communication style based on recipient.`,
+    Maintain consistent communication style based on recipient and relationship.
+    Focus on strategic value and relationship quality.`,
   tools: [
     // OpenAI built-in tools
     tool.fileSearch(),
     tool.webSearch(),
     
-    // Custom organizational tools
+    // Custom executive assistant tools
     tool(searchProjectContext),
     tool(searchRelationshipHistory),
-    tool(verifyOrganizationalFacts),
+    tool(verifyPersonalKnowledge),
     tool(getEmailThreadContext),
-    tool(updateOrganizationalMemory)
+    tool(updatePersonalMemory),
+    tool(extractCommitments),
+    tool(scheduleFollowUp)
   ]
 });
 
@@ -930,15 +948,24 @@ SENTRY_DSN=
 - **Cross-Platform Intelligence**: Unified view vs siloed assistance
 - **Privacy-First**: Your data stays yours vs shared model training
 - **Proactive Intelligence**: Identifies what needs attention vs reactive responses
+- **Executive Focus**: Designed for leadership workflows vs general productivity
 
 #### **vs Superhuman/SaneBox:**
 - **True Understanding**: Context-aware decisions vs rule-based filtering
 - **Full Work Context**: Beyond email to complete work intelligence
 - **Adaptive Learning**: Improves based on your patterns vs static rules
 - **Autonomous Actions**: Takes action vs just organizing
+- **Relationship Intelligence**: Maintains professional relationships vs email management
 
 #### **vs Traditional Email Clients:**
 - **Intelligent Assistant**: Proactive help vs passive tool
 - **Context Awareness**: Understands relationships and projects vs basic threading
 - **Cross-Platform**: Unified intelligence vs platform-specific features
 - **Learning System**: Adapts to you vs one-size-fits-all
+- **Executive Dashboard**: Command center vs inbox
+
+#### **vs Existing AI Assistants:**
+- **Work-Focused**: Designed for professional productivity vs general chat
+- **Context Integration**: Connects all work tools vs isolated conversations
+- **Commitment Tracking**: Never drop a ball vs reactive responses
+- **Relationship Management**: Maintains professional relationships vs transactional interactions

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EmailThreadList } from '@/components/email-thread-list'
 import { StatsCards } from '@/components/stats-cards'
@@ -11,9 +11,10 @@ import { ProcessingRulesManager } from '@/components/processing-rules-manager'
 import { EnhancedDailyBriefingComponent } from '@/components/enhanced-daily-briefing'
 import { ExecutiveAssistantBriefingComponent } from '@/components/executive-assistant-briefing'
 import { InboxZeroDashboard } from '@/components/inbox-zero-dashboard'
+import { ExecutiveCommandCenter } from '@/components/executive-command-center'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Eye, EyeOff, RefreshCw, Brain, TrendingUp, Briefcase, Zap } from 'lucide-react'
+import { Eye, EyeOff, RefreshCw, Brain, TrendingUp, Briefcase, Zap, Command, Clock, Users } from 'lucide-react'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -27,12 +28,30 @@ export default function DashboardPage() {
   const [executiveBriefing, setExecutiveBriefing] = useState<any>(null)
   const [executiveBriefingLoading, setExecutiveBriefingLoading] = useState(false)
   const [briefingType, setBriefingType] = useState<'enhanced' | 'executive'>('executive')
+  const [activeTab, setActiveTab] = useState('command-center')
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
 
   useEffect(() => {
     checkUser()
   }, [])
+
+  useEffect(() => {
+    // Handle URL parameters for navigation from Command Center
+    const tab = searchParams.get('tab')
+    const filter = searchParams.get('filter')
+    const action = searchParams.get('action')
+    
+    if (tab) {
+      setActiveTab(tab)
+      
+      // Apply filters based on parameters
+      if (tab === 'emails' && filter === 'action_required') {
+        // This will be handled in the EmailThreadList component
+      }
+    }
+  }, [searchParams])
 
   useEffect(() => {
     if (user) {
@@ -183,10 +202,10 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                Email Dashboard
+                Executive Command Center
               </h1>
               <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
-                Manage your email threads, AI-generated drafts, and email classifications
+                AI-powered work orchestration - communications, commitments, and relationships
               </p>
             </div>
             
@@ -218,8 +237,26 @@ export default function DashboardPage() {
         <StatsCards stats={statsData} />
 
         <div className="mt-8">
-          <Tabs defaultValue="inbox-zero" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-7">
+              <TabsTrigger value="command-center" className="flex items-center space-x-1">
+                <Command className="h-4 w-4" />
+                <span>Command Center</span>
+              </TabsTrigger>
+              <TabsTrigger value="commitments" className="flex items-center space-x-1">
+                <Clock className="h-4 w-4" />
+                <span>Commitments</span>
+              </TabsTrigger>
+              <TabsTrigger value="relationships" className="flex items-center space-x-1">
+                <Users className="h-4 w-4" />
+                <span>Relationships</span>
+              </TabsTrigger>
+              <TabsTrigger value="emails">
+                Email Threads 
+                {!showProcessed && (
+                  <span className="ml-2 text-xs text-gray-500">(active only)</span>
+                )}
+              </TabsTrigger>
               <TabsTrigger value="inbox-zero" className="flex items-center space-x-1">
                 <Zap className="h-4 w-4" />
                 <span>Inbox Zero</span>
@@ -228,24 +265,58 @@ export default function DashboardPage() {
                 <Briefcase className="h-4 w-4" />
                 <span>Intelligence Briefing</span>
               </TabsTrigger>
-              <TabsTrigger value="emails">
-                Email Threads 
-                {!showProcessed && (
-                  <span className="ml-2 text-xs text-gray-500">(active only)</span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="classification">
-                Classification {classificationStats.spam > 0 && (
-                  <span className="ml-2 bg-red-100 text-red-800 text-xs font-medium px-2 py-1 rounded-full">
-                    {classificationStats.spam}
-                  </span>
-                )}
-              </TabsTrigger>
               <TabsTrigger value="rules" className="flex items-center space-x-1">
                 <Brain className="h-4 w-4" />
                 <span>AI Rules</span>
               </TabsTrigger>
             </TabsList>
+            
+            <TabsContent value="command-center" className="mt-6">
+              <ExecutiveCommandCenter />
+            </TabsContent>
+            
+            <TabsContent value="commitments" className="mt-6">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">Commitments & Tasks</h2>
+                  <Button onClick={() => router.push('/api/executive/extract-commitments')} variant="outline">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Extract from Recent Emails
+                  </Button>
+                </div>
+                <div className="text-center py-12 text-gray-500">
+                  <Clock className="h-12 w-12 mx-auto mb-4" />
+                  <p>Commitment tracking will be implemented here</p>
+                  <p className="text-sm">This will show all your promises, deliverables, and what you're waiting for</p>
+                </div>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="relationships" className="mt-6">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">Relationship Health</h2>
+                  <Button onClick={() => {}} variant="outline">
+                    <Users className="h-4 w-4 mr-2" />
+                    Analyze Patterns
+                  </Button>
+                </div>
+                <div className="text-center py-12 text-gray-500">
+                  <Users className="h-12 w-12 mx-auto mb-4" />
+                  <p>Relationship monitoring will be implemented here</p>
+                  <p className="text-sm">This will show contacts going cold, overdue follow-ups, and relationship insights</p>
+                </div>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="emails" className="mt-6">
+              <EmailThreadList 
+                threads={threads || []} 
+                showProcessed={showProcessed}
+                onThreadUpdated={loadThreads}
+                filterActionRequired={searchParams.get('filter') === 'action_required'}
+              />
+            </TabsContent>
             
             <TabsContent value="inbox-zero" className="mt-6">
               <InboxZeroDashboard />
@@ -293,18 +364,6 @@ export default function DashboardPage() {
                   loading={briefingLoading}
                 />
               )}
-            </TabsContent>
-            
-            <TabsContent value="emails" className="mt-6">
-              <EmailThreadList 
-                threads={threads || []} 
-                showProcessed={showProcessed}
-                onThreadUpdated={loadThreads}
-              />
-            </TabsContent>
-            
-            <TabsContent value="classification" className="mt-6">
-              <EmailClassificationDashboard />
             </TabsContent>
             
             <TabsContent value="rules" className="mt-6">

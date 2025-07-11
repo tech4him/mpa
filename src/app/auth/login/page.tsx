@@ -4,10 +4,10 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
-            Mission Mutual AI Assistant
+            AI Executive Assistant
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            Sign in with your Microsoft 365 account to continue
+            Sign in with your Microsoft 365 account to access your personal AI assistant
           </p>
         </div>
 
@@ -21,8 +21,8 @@ export default function LoginPage() {
 
           <div className="text-center text-sm text-gray-600">
             <p>
-              By signing in, you agree to allow the AI Assistant to access your
-              email on your behalf.
+              By signing in, you agree to allow the AI Executive Assistant to access your
+              work data to provide intelligent automation and insights.
             </p>
           </div>
         </div>

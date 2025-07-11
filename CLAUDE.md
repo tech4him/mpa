@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is an AI-powered email assistant built on a privacy-first, agent-based architecture with comprehensive Microsoft 365 integration.
+This is a comprehensive AI Executive Assistant built on a privacy-first, agent-based architecture with universal work platform integration. It transforms executive productivity by providing a unified intelligence layer across all work tools and communications.
 
 ### Core Technology Stack
 - **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS v4
@@ -32,7 +32,7 @@ This is an AI-powered email assistant built on a privacy-first, agent-based arch
 
 ### Key Architectural Patterns
 
-**Agent-Based Processing**: Uses OpenAI Agents framework (`@openai/agents`) with custom tools for organizational context, email analysis, and draft generation. Each agent has specialized tools for different aspects of email intelligence.
+**Agent-Based Processing**: Uses OpenAI Agents framework (`@openai/agents`) with custom tools for personal context, communication analysis, and intelligent automation. Each agent specializes in different aspects of executive work intelligence.
 
 **Privacy-First Design**: 
 - Per-user encrypted vector stores (no shared knowledge base)
@@ -41,9 +41,14 @@ This is an AI-powered email assistant built on a privacy-first, agent-based arch
 - All user data stays within their own encrypted context
 
 **Event-Driven Architecture**:
-- Microsoft Graph webhooks trigger real-time email processing
+- Microsoft Graph webhooks trigger real-time processing
 - Upstash QStash handles background jobs and async processing
 - Webhook responses must complete within 5 seconds (Microsoft requirement)
+
+**Universal Work Context**:
+- Unified intelligence layer across all work platforms
+- Cross-platform relationship and project tracking
+- Context-aware decision making and proactive suggestions
 
 ### Project Structure
 
@@ -54,10 +59,14 @@ src/
 │   │   ├── webhooks/outlook/        # Microsoft Graph webhook handlers
 │   │   ├── drafts/                  # AI draft generation and management
 │   │   ├── email/                   # Email sync, spam, and processing
+│   │   ├── commitments/             # Commitment tracking and follow-ups
+│   │   ├── relationships/           # Relationship intelligence endpoints
+│   │   ├── briefings/               # Daily intelligence briefings
 │   │   ├── security/                # Security analysis endpoints
 │   │   └── test-agent/              # Agent testing utilities
 │   ├── auth/                        # Azure AD authentication flows
-│   └── dashboard/                   # Main application UI
+│   ├── dashboard/                   # Executive Command Center UI
+│   └── command-center/              # Main executive dashboard
 ├── lib/
 │   ├── agents/                      # OpenAI agent implementations
 │   ├── ai/                         # Core AI services (draft generator, security)
@@ -71,34 +80,41 @@ src/
 
 ### Database Schema
 
-The database follows a comprehensive privacy-first design:
+The database follows a comprehensive privacy-first design focused on executive work intelligence:
 
 **Core Tables:**
 - `users` - User management with encrypted tokens and per-user vector store IDs
 - `email_threads` & `email_messages` - Full conversation tracking with RLS
 - `email_drafts` - AI-generated drafts with versioning and feedback loops
-- `email_processing_rules` - User-defined automation rules with AI parsing
+- `processing_rules` - User-defined automation rules with AI parsing
 - `learning_samples` - User edit tracking for continuous AI improvement
 
-**Intelligence Tables:**
-- `relationship_intelligence` - Contact interaction patterns and preferences
-- `project_contexts` - Organizational project awareness
-- `daily_briefings` - Morning intelligence summaries
-- `intelligent_actions` - Proactive recommendations
+**Executive Intelligence Tables:**
+- `relationship_intelligence` - Contact interaction patterns and relationship health
+- `project_contexts` - Cross-platform project awareness and context
+- `commitments` - Tracked promises, deliverables, and follow-ups
+- `daily_briefings` - Morning intelligence summaries with priorities
+- `intelligent_actions` - Proactive recommendations and anomaly detection
+- `work_patterns` - User work habits and optimization insights
 
-**Security:** All tables use Row-Level Security policies to ensure users only access their own data.
+**Security:** All tables use Row-Level Security policies to ensure complete user data isolation.
 
 ### AI Integration Patterns
 
 **OpenAI Agents Framework:**
-- `DraftGeneratorAgent` - Context-aware email response generation
-- `SecurityAgent` - Email threat analysis and classification
-- `AnalysisAgent` - Thread categorization and priority assessment
+- `ExecutiveAssistantAgent` - Main orchestration agent for executive work
+- `DraftGeneratorAgent` - Context-aware communication response generation
+- `RelationshipAgent` - Relationship intelligence and health monitoring
+- `CommitmentTracker` - Promise and deliverable tracking across platforms
+- `BriefingAgent` - Daily intelligence summary generation
+- `SecurityAgent` - Communication threat analysis and classification
 
 **Custom Tools:**
-- `searchProjectContext` - RAG search for organizational knowledge
-- `searchRelationshipHistory` - Contact interaction analysis
-- `verifyOrganizationalFacts` - Fact-checking against knowledge base
+- `searchProjectContext` - RAG search for cross-platform project knowledge
+- `searchRelationshipHistory` - Contact interaction analysis and patterns
+- `verifyPersonalKnowledge` - Fact-checking against personal knowledge base
+- `extractCommitments` - Identify promises and deliverables
+- `scheduleFollowUp` - Intelligent follow-up scheduling
 
 **Vector Store Management:**
 - Each user has their own OpenAI Vector Store ID stored in `users.personal_vector_store_id`
@@ -175,23 +191,31 @@ Required environment variables documented in `.env.example`:
 
 ### Key Business Logic
 
-**Email Processing Pipeline:**
-1. Webhook receives email notification
-2. QStash queues background processing
-3. AI agents analyze content and context
-4. Processing rules applied for automation
-5. User notifications for important items
+**Executive Work Processing Pipeline:**
+1. Multi-platform webhooks receive notifications (email, calendar, documents)
+2. QStash queues background processing for complex analysis
+3. AI agents analyze content, context, and cross-platform relationships
+4. Processing rules applied for intelligent automation
+5. Command center updated with priorities and recommendations
+
+**Executive Intelligence Features:**
+- Daily morning briefings with need-to-know, need-to-do, and anomalies
+- Proactive commitment tracking and follow-up management
+- Relationship health monitoring and touch-point recommendations
+- Cross-platform project context awareness and coordination
+- Anomaly detection for unusual patterns requiring attention
 
 **Learning System:**
-- Captures user edits to AI-generated drafts
-- Analyzes patterns in communication style
-- Improves future draft quality through feedback loops
-- Maintains user-specific learning within their vector store
+- Captures user edits to AI-generated drafts and decisions
+- Analyzes patterns in communication style and work preferences
+- Improves future suggestions through continuous feedback loops
+- Maintains user-specific learning within their private vector store
+- Adapts to executive work patterns and relationship dynamics
 
-**Intelligence Features:**
-- Daily morning briefings with need-to-know information
-- Proactive action recommendations based on patterns
-- Anomaly detection for unusual communication patterns
-- Context-aware draft generation using full organizational knowledge
+**Privacy-First Architecture:**
+- Complete data isolation per user with encrypted vector stores
+- No cross-user data sharing or model contamination
+- Enterprise-grade security with Row-Level Security policies
+- Full audit trail for all automated actions and decisions
 
-This codebase implements a sophisticated AI assistant focused on privacy, intelligence, and user autonomy while maintaining enterprise-grade security and compliance standards.
+This codebase implements a sophisticated AI Executive Assistant focused on transforming executive productivity through intelligent automation, relationship management, and proactive work orchestration while maintaining complete privacy and user control.
