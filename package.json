@@ -9,7 +9,9 @@
     "lint": "next lint",
     "reprocess-emails": "npx tsx scripts/simple-reprocess-emails.ts",
     "check-vector-store": "npx tsx scripts/check-vector-store-status.ts",
-    "check-emails": "npx tsx scripts/simple-email-check.ts"
+    "check-emails": "npx tsx scripts/simple-email-check.ts",
+    "test-agents": "npx tsx scripts/test-agent-system.ts",
+    "test-agent-setup": "npx tsx scripts/test-agent-setup.ts"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.14.0",

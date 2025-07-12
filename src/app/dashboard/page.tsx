@@ -12,9 +12,10 @@ import { EnhancedDailyBriefingComponent } from '@/components/enhanced-daily-brie
 import { ExecutiveAssistantBriefingComponent } from '@/components/executive-assistant-briefing'
 import { InboxZeroDashboard } from '@/components/inbox-zero-dashboard'
 import { ExecutiveCommandCenter } from '@/components/executive-command-center'
+import { AgentMissionControl } from '@/components/agent-mission-control'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Eye, EyeOff, RefreshCw, Brain, TrendingUp, Briefcase, Zap, Command, Clock, Users } from 'lucide-react'
+import { Eye, EyeOff, RefreshCw, Brain, TrendingUp, Briefcase, Zap, Command, Clock, Users, Bot } from 'lucide-react'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -238,7 +239,7 @@ export default function DashboardPage() {
 
         <div className="mt-8">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-7">
+            <TabsList className="grid w-full grid-cols-8">
               <TabsTrigger value="command-center" className="flex items-center space-x-1">
                 <Command className="h-4 w-4" />
                 <span>Command Center</span>
@@ -260,6 +261,10 @@ export default function DashboardPage() {
               <TabsTrigger value="inbox-zero" className="flex items-center space-x-1">
                 <Zap className="h-4 w-4" />
                 <span>Inbox Zero</span>
+              </TabsTrigger>
+              <TabsTrigger value="agents" className="flex items-center space-x-1">
+                <Bot className="h-4 w-4" />
+                <span>Agents</span>
               </TabsTrigger>
               <TabsTrigger value="briefing" className="flex items-center space-x-1">
                 <Briefcase className="h-4 w-4" />
@@ -320,6 +325,10 @@ export default function DashboardPage() {
             
             <TabsContent value="inbox-zero" className="mt-6">
               <InboxZeroDashboard />
+            </TabsContent>
+            
+            <TabsContent value="agents" className="mt-6">
+              <AgentMissionControl />
             </TabsContent>
             
             <TabsContent value="briefing" className="mt-6">

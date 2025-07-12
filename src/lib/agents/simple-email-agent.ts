@@ -71,3 +71,59 @@ export async function analyzeEmailBasic(emailContent: string, threadContext: str
     confidence: 0.7,
   };
 }
+
+// Enhanced analysis function for autonomous agent
+export async function analyzeEmailWithAgent(emailContent: string, threadContext: string) {
+  // Simple rule-based analysis for now
+  let category = 'FYI_ONLY'
+  let priority = 3
+  let requiresAction = false
+  let confidence = 0.8
+
+  // Check for spam/marketing
+  if (emailContent.toLowerCase().includes('unsubscribe') || 
+      emailContent.toLowerCase().includes('marketing') ||
+      emailContent.toLowerCase().includes('promotion')) {
+    category = 'MARKETING'
+    priority = 5
+    confidence = 0.9
+  }
+
+  // Check for admin/routine
+  if (emailContent.toLowerCase().includes('confirm') || 
+      emailContent.toLowerCase().includes('verification') ||
+      emailContent.toLowerCase().includes('account')) {
+    category = 'ROUTINE_ADMIN'
+    priority = 4
+    confidence = 0.85
+  }
+
+  // Check for action required
+  if (emailContent.toLowerCase().includes('approval') || 
+      emailContent.toLowerCase().includes('urgent') ||
+      emailContent.toLowerCase().includes('action required')) {
+    category = 'ACTION_REQUIRED'
+    requiresAction = true
+    priority = 2
+    confidence = 0.9
+  }
+
+  // Check for VIP
+  if (emailContent.toLowerCase().includes('ceo') || 
+      emailContent.toLowerCase().includes('urgent') ||
+      threadContext.toLowerCase().includes('vip')) {
+    category = 'VIP_CRITICAL'
+    requiresAction = true
+    priority = 1
+    confidence = 0.95
+  }
+
+  return {
+    category,
+    priority,
+    requiresAction,
+    hasTask: requiresAction,
+    isVIP: category === 'VIP_CRITICAL',
+    confidence,
+  }
+}
