@@ -1,4 +1,4 @@
-import { getGraphClient, refreshUserToken } from './client'
+import { getGraphClient, getValidTokenForUser } from './client'
 import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 
@@ -30,22 +30,8 @@ export class WebhookService {
     try {
       const supabase = await this.getSupabase()
 
-      // Get user's encrypted refresh token
-      const { data: user } = await supabase
-        .from('users')
-        .select('encrypted_refresh_token')
-        .eq('id', userId)
-        .single()
-
-      if (!user?.encrypted_refresh_token) {
-        throw new Error('User token not found')
-      }
-
-      // Decrypt refresh token
-      const refreshToken = await this.decryptRefreshToken(user.encrypted_refresh_token)
-
-      // Get fresh access token
-      const { accessToken } = await refreshUserToken(refreshToken)
+      // Get valid access token (auto-refreshes if needed)
+      const accessToken = await getValidTokenForUser(userId, ['User.Read', 'Mail.ReadWrite'])
 
       // Initialize Graph client
       const graphClient = await getGraphClient(accessToken)
@@ -91,7 +77,7 @@ export class WebhookService {
       // Get subscription details
       const { data: account } = await supabase
         .from('email_accounts')
-        .select('microsoft_subscription_id, encrypted_refresh_token')
+        .select('microsoft_subscription_id')
         .eq('user_id', userId)
         .single()
 
@@ -101,11 +87,8 @@ export class WebhookService {
         return !!subscription
       }
 
-      // Decrypt refresh token
-      const refreshToken = await this.decryptRefreshToken(account.encrypted_refresh_token)
-
-      // Get fresh access token
-      const { accessToken } = await refreshUserToken(refreshToken)
+      // Get valid access token (auto-refreshes if needed)
+      const accessToken = await getValidTokenForUser(userId, ['User.Read', 'Mail.ReadWrite'])
 
       // Initialize Graph client
       const graphClient = await getGraphClient(accessToken)
@@ -148,7 +131,7 @@ export class WebhookService {
       // Get subscription details
       const { data: account } = await supabase
         .from('email_accounts')
-        .select('microsoft_subscription_id, encrypted_refresh_token')
+        .select('microsoft_subscription_id')
         .eq('user_id', userId)
         .single()
 
@@ -156,11 +139,8 @@ export class WebhookService {
         return true // Already deleted
       }
 
-      // Decrypt refresh token
-      const refreshToken = await this.decryptRefreshToken(account.encrypted_refresh_token)
-
-      // Get fresh access token
-      const { accessToken } = await refreshUserToken(refreshToken)
+      // Get valid access token (auto-refreshes if needed)
+      const accessToken = await getValidTokenForUser(userId, ['User.Read', 'Mail.ReadWrite'])
 
       // Initialize Graph client
       const graphClient = await getGraphClient(accessToken)

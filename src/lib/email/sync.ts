@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getGraphClient, refreshUserToken } from '@/lib/microsoft-graph/client'
+import { getGraphClient, getValidTokenForUser } from '@/lib/microsoft-graph/client'
 import { VectorStoreService } from '@/lib/vector-store/service'
 import { EmailClassificationProcessor } from '@/lib/agents/email-classifier'
 import crypto from 'crypto'
@@ -79,7 +79,7 @@ export class EmailSyncService {
     try {
       const supabase = await this.getSupabase()
       
-      // Get user info and email account with token
+      // Get user info
       const { data: user } = await supabase
         .from('users')
         .select('email')
@@ -90,48 +90,25 @@ export class EmailSyncService {
         throw new Error('User not found')
       }
 
-      // Get email account with access token (most recent with valid token)
-      const { data: emailAccounts } = await supabase
-        .from('email_accounts')
-        .select('encrypted_access_token, access_token_expires_at')
-        .eq('user_id', userId)
-        .eq('email_address', user.email)
-        .not('encrypted_access_token', 'is', null)
-        .gt('access_token_expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1)
-
-      const emailAccount = emailAccounts?.[0]
-
-      if (!emailAccount?.encrypted_access_token) {
-        throw new Error('User token not found')
-      }
-
-      // Check if token is expired
-      if (emailAccount.access_token_expires_at && new Date(emailAccount.access_token_expires_at) <= new Date()) {
-        throw new Error('Access token has expired')
-      }
-
-      // Decrypt stored access token
+      // Get valid access token (auto-refreshes if needed)
       let accessToken: string
       try {
-        accessToken = await this.decryptRefreshToken(emailAccount.encrypted_access_token)
-        console.log('Decrypted stored access token')
-      } catch (error) {
-        console.error('Failed to decrypt token:', error)
-        throw new Error('Invalid or corrupted token. Please re-authenticate.')
+        accessToken = await getValidTokenForUser(userId, ['User.Read', 'Mail.ReadWrite'])
+        console.log('Retrieved valid access token for user')
+      } catch (error: any) {
+        console.error('Failed to get valid token:', error)
+        if (error.message === 'User needs to re-authenticate') {
+          throw new Error('Authentication expired. Please sign in again to refresh your access.')
+        }
+        throw error
       }
 
-      // Note: In server-side flow, we can't refresh tokens
-      // The stored token is the access token from initial auth
-      // If it's expired, user needs to re-authenticate
-      console.log('Using stored access token (refresh not available in server-side flow)')
-      // Store the access token temporarily (encrypted) for mailbox operations
+      // Update email account with fresh token info
       try {
         const encryptedAccessToken = await this.encryptToken(accessToken)
         const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour expiry
         
-        console.log('Attempting to store access token:', {
+        console.log('Updating email account with fresh token:', {
           userId,
           email: user.email,
           expiresAt: expiresAt.toISOString(),
@@ -146,8 +123,8 @@ export class EmailSyncService {
             email_address: user.email,
             encrypted_access_token: encryptedAccessToken,
             access_token_expires_at: expiresAt.toISOString(),
-            webhook_secret: crypto.randomBytes(32).toString('hex')
-            // Don't update last_sync here - it should only be updated after successful email processing
+            webhook_secret: crypto.randomBytes(32).toString('hex'),
+            sync_status: 'in_progress'
           }, {
             onConflict: 'user_id,email_address',
             ignoreDuplicates: false
@@ -159,23 +136,10 @@ export class EmailSyncService {
           throw upsertError
         }
         
-        console.log('Successfully stored access token for mailbox operations:', upsertResult)
+        console.log('Successfully updated email account with fresh token:', upsertResult)
       } catch (error) {
-        console.error('Failed to store access token:', error)
+        console.error('Failed to update email account:', error)
         // Continue with sync even if storage fails
-      }
-
-      // Test the access token before storing it
-      try {
-        const testClient = await getGraphClient(accessToken)
-        const testResponse = await testClient.api('/me').select('id,mail').get()
-        console.log('Access token test successful:', { 
-          userId: testResponse.id, 
-          email: testResponse.mail 
-        })
-      } catch (error) {
-        console.error('Access token test failed:', error)
-        throw new Error('Access token is invalid or expired. Please re-authenticate.')
       }
 
       // Initialize Graph client
