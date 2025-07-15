@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getGraphClient } from '@/lib/microsoft-graph/client'
-import crypto from 'crypto'
+import { getGraphClient, getValidTokenForUser } from '@/lib/microsoft-graph/client'
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,47 +22,18 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Get user's email account for access token
-    const { data: userData } = await supabase
-      .from('users')
-      .select('email')
-      .eq('id', user.id)
-      .single()
-
-    const { data: emailAccount } = await supabase
-      .from('email_accounts')
-      .select('encrypted_access_token, access_token_expires_at')
-      .eq('user_id', user.id)
-      .eq('email_address', userData?.email)
-      .single()
-
     // Check if we have a valid access token
     let canUseGraphAPI = false
     let graphClient = null
 
-    if (emailAccount?.encrypted_access_token && emailAccount?.access_token_expires_at) {
-      const tokenExpiry = new Date(emailAccount.access_token_expires_at)
-      if (tokenExpiry > new Date()) {
-        try {
-          // Decrypt access token
-          const key = Buffer.from(process.env.ENCRYPTION_KEY!, 'hex')
-          const [ivHex, authTagHex, encrypted] = emailAccount.encrypted_access_token.split(':')
-          
-          const iv = Buffer.from(ivHex, 'hex')
-          const authTag = Buffer.from(authTagHex, 'hex')
-          
-          const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
-          decipher.setAuthTag(authTag)
-          
-          let decrypted = decipher.update(encrypted, 'hex', 'utf8')
-          decrypted += decipher.final('utf8')
-          
-          graphClient = await getGraphClient(decrypted)
-          canUseGraphAPI = true
-        } catch (error) {
-          console.error('Failed to decrypt access token:', error)
-        }
-      }
+    try {
+      // Get valid access token (auto-refreshes if needed)
+      const accessToken = await getValidTokenForUser(user.id, ['User.Read', 'Mail.ReadWrite'])
+      graphClient = await getGraphClient(accessToken)
+      canUseGraphAPI = true
+    } catch (error: any) {
+      console.error('Failed to get valid token:', error)
+      // Continue without Graph API - we can still mark as spam in our database
     }
 
     // Process based on what was provided

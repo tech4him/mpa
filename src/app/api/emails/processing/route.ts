@@ -85,60 +85,26 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          // First, get the user's access token for mailbox operations
-          const { data: userData } = await supabase
-            .from('users')
-            .select('email')
-            .eq('id', user.id)
-            .single()
-
-          if (!userData?.email) {
+          // Get valid access token (auto-refreshes if needed)
+          const { getValidTokenForUser } = await import('@/lib/microsoft-graph/client')
+          let accessToken: string
+          try {
+            accessToken = await getValidTokenForUser(user.id, ['User.Read', 'Mail.ReadWrite'])
+          } catch (error: any) {
+            console.error('Failed to get valid token:', error)
+            if (error.message === 'User needs to re-authenticate') {
+              return NextResponse.json({ 
+                error: 'Your Microsoft authentication has expired. Please click "Sync Emails" to refresh your authentication, then try again.',
+                requiresSync: true 
+              }, { status: 400 })
+            }
             return NextResponse.json({ 
-              error: 'User email not found.' 
-            }, { status: 400 })
-          }
-
-          // Get stored access token from email_accounts
-          const { data: emailAccount } = await supabase
-            .from('email_accounts')
-            .select('encrypted_access_token, access_token_expires_at')
-            .eq('user_id', user.id)
-            .eq('email_address', userData.email)
-            .single()
-
-          if (!emailAccount?.encrypted_access_token) {
-            return NextResponse.json({ 
-              error: 'Authentication required for filing. Please sync your emails first.',
+              error: 'Failed to obtain access token. Please try again.',
               requiresSync: true 
-            }, { status: 400 })
+            }, { status: 500 })
           }
 
-          // Check if token is expired
-          const tokenExpiry = new Date(emailAccount.access_token_expires_at)
-          if (tokenExpiry < new Date()) {
-            return NextResponse.json({ 
-              error: 'Access token has expired. Please sync your emails again to refresh authentication.',
-              requiresSync: true 
-            }, { status: 400 })
-          }
-
-          // Decrypt the access token
           const { createMailboxManager } = await import('@/lib/email/mailbox-manager')
-          const crypto = await import('crypto')
-          
-          const key = Buffer.from(process.env.ENCRYPTION_KEY!, 'hex')
-          const [ivHex, authTagHex, encrypted] = emailAccount.encrypted_access_token.split(':')
-          
-          const iv = Buffer.from(ivHex, 'hex')
-          const authTag = Buffer.from(authTagHex, 'hex')
-          
-          const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
-          decipher.setAuthTag(authTag)
-          
-          let decrypted = decipher.update(encrypted, 'hex', 'utf8')
-          decrypted += decipher.final('utf8')
-          
-          const accessToken = decrypted
 
           // File the emails first
           const mailboxManager = await createMailboxManager(accessToken)
