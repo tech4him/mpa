@@ -17,9 +17,25 @@ interface DraftToMailboxOptions {
   organizeFolders?: boolean
 }
 
+interface FolderCacheEntry {
+  id: string
+  displayName: string
+  messageCount: number
+  lastModified: Date
+  themes: string[]
+}
+
+interface FolderCache {
+  folders: FolderCacheEntry[]
+  lastUpdated: Date
+  cacheExpiryMs: number
+}
+
 export class MailboxManager {
   private graphClient: any
   private supabase: any
+  private folderCache: FolderCache | null = null
+  private readonly CACHE_EXPIRY_MS = 5 * 60 * 1000 // 5 minutes
 
   constructor(accessToken: string) {
     this.graphClient = null
@@ -30,6 +46,174 @@ export class MailboxManager {
   async initialize() {
     this.graphClient = await getGraphClient(this.accessToken)
     this.supabase = await createClient()
+  }
+
+  /**
+   * Get folders from cache or fetch if cache is expired
+   */
+  private async getCachedFolders(): Promise<FolderCacheEntry[]> {
+    const now = new Date()
+    
+    // Check if cache is valid
+    if (this.folderCache && 
+        (now.getTime() - this.folderCache.lastUpdated.getTime()) < this.CACHE_EXPIRY_MS) {
+      console.log(`Using cached folders (${this.folderCache.folders.length} folders)`)
+      return this.folderCache.folders
+    }
+    
+    console.log('Folder cache expired or missing, fetching fresh data...')
+    await this.refreshFolderCache()
+    return this.folderCache?.folders || []
+  }
+
+  /**
+   * Refresh the folder cache with latest data from Microsoft Graph
+   */
+  private async refreshFolderCache(): Promise<void> {
+    try {
+      const folders: FolderCacheEntry[] = []
+      let nextLink = '/me/mailFolders?$top=100'
+      
+      while (nextLink) {
+        const response = await this.graphClient
+          .api(nextLink)
+          .get()
+        
+        for (const folder of response.value) {
+          // Skip system folders
+          if (['Inbox', 'Sent Items', 'Drafts', 'Deleted Items', 'Junk Email', 'Outbox', 'AI Assistant Drafts'].includes(folder.displayName)) {
+            continue
+          }
+          
+          folders.push({
+            id: folder.id,
+            displayName: folder.displayName,
+            messageCount: folder.totalItemCount || 0,
+            lastModified: new Date(folder.lastModifiedDateTime || Date.now()),
+            themes: [] // Will be populated on demand
+          })
+        }
+        
+        nextLink = response['@odata.nextLink'] ? response['@odata.nextLink'].replace('https://graph.microsoft.com/v1.0', '') : null
+      }
+      
+      this.folderCache = {
+        folders,
+        lastUpdated: new Date(),
+        cacheExpiryMs: this.CACHE_EXPIRY_MS
+      }
+      
+      console.log(`Cached ${folders.length} folders`)
+    } catch (error) {
+      console.error('Error refreshing folder cache:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Invalidate the folder cache (call after creating new folders)
+   */
+  private invalidateFolderCache(): void {
+    this.folderCache = null
+  }
+
+  /**
+   * Get or analyze themes for a specific folder
+   */
+  private async getFolderThemes(folderId: string, folderName: string): Promise<string[]> {
+    try {
+      // Sample messages from the folder to understand themes
+      const messages = await this.graphClient
+        .api(`/me/mailFolders/${folderId}/messages`)
+        .select('subject,body')
+        .top(10)  // Reduced from 20 for caching efficiency
+        .orderby('receivedDateTime desc')
+        .get()
+
+      if (!messages.value || messages.value.length === 0) {
+        return []
+      }
+
+      const folderContent = messages.value.map((msg: any) => ({
+        subject: (msg.subject || '').toLowerCase(),
+        body: (msg.body?.content || '').toLowerCase().substring(0, 500)
+      }))
+
+      // Extract themes using the existing theme analysis
+      const themes = this.extractThemesFromContent(folderContent, folderName)
+      
+      // Cache the themes in the folder cache
+      if (this.folderCache) {
+        const cachedFolder = this.folderCache.folders.find(f => f.id === folderId)
+        if (cachedFolder) {
+          cachedFolder.themes = themes
+        }
+      }
+      
+      return themes
+    } catch (error) {
+      console.warn(`Could not analyze themes for folder ${folderName}:`, error)
+      return []
+    }
+  }
+
+  /**
+   * Extract themes from folder content
+   */
+  private extractThemesFromContent(folderContent: Array<{subject: string, body: string}>, folderName: string): string[] {
+    const topicThemes = {
+      onboarding: ['laptop', 'macbook', 'computer', 'setup', 'new employee', 'onboard', 'equipment', 'workstation'],
+      hr: ['employee', 'staff', 'hire', 'hiring', 'benefits', 'vacation', 'leave', 'performance', 'review', 'payroll'],
+      it: ['computer', 'laptop', 'software', 'password', 'access', 'system', 'server', 'network', 'email', 'tech'],
+      finance: ['budget', 'expense', 'invoice', 'payment', 'financial', 'accounting', 'cost', 'revenue'],
+      security: ['security', 'safety', 'incident', 'breach', 'vulnerability', 'audit', 'advisor'],
+      technology: ['software', 'system', 'application', 'platform', 'technology', 'digital', 'supabase', 'database'],
+      meetings: ['meeting', 'conference', 'call', 'agenda', 'minutes', 'schedule']
+    }
+
+    const folderText = folderContent.map(item => item.subject + ' ' + item.body).join(' ')
+    const themes: string[] = []
+
+    for (const [theme, keywords] of Object.entries(topicThemes)) {
+      const matchCount = keywords.filter(keyword => folderText.includes(keyword)).length
+      if (matchCount >= 2) { // Need at least 2 keyword matches
+        themes.push(theme)
+      }
+    }
+
+    return themes
+  }
+
+  /**
+   * Calculate match score between thread content and folder themes
+   */
+  private calculateThemeMatchScore(thread: any, folderThemes: string[], folderName: string): number {
+    const threadSubject = (thread.subject || '').toLowerCase()
+    const threadBody = (thread.email_messages?.[0]?.body || '').toLowerCase()
+    const threadContent = `${threadSubject} ${threadBody}`
+    
+    const topicThemes = {
+      onboarding: ['laptop', 'macbook', 'computer', 'setup', 'new employee', 'onboard', 'equipment', 'workstation'],
+      hr: ['employee', 'staff', 'hire', 'hiring', 'benefits', 'vacation', 'leave', 'performance', 'review', 'payroll'],
+      it: ['computer', 'laptop', 'software', 'password', 'access', 'system', 'server', 'network', 'email', 'tech'],
+      finance: ['budget', 'expense', 'invoice', 'payment', 'financial', 'accounting', 'cost', 'revenue'],
+      security: ['security', 'safety', 'incident', 'breach', 'vulnerability', 'audit', 'advisor'],
+      technology: ['software', 'system', 'application', 'platform', 'technology', 'digital', 'supabase', 'database'],
+      meetings: ['meeting', 'conference', 'call', 'agenda', 'minutes', 'schedule']
+    }
+    
+    let maxScore = 0
+    
+    for (const theme of folderThemes) {
+      const keywords = topicThemes[theme as keyof typeof topicThemes]
+      if (keywords) {
+        const matchCount = keywords.filter(keyword => threadContent.includes(keyword)).length
+        const themeScore = matchCount / keywords.length
+        maxScore = Math.max(maxScore, themeScore)
+      }
+    }
+    
+    return maxScore
   }
 
   private accessToken: string
@@ -322,33 +506,16 @@ export class MailboxManager {
     const participants = thread.participants || []
     
     try {
-      // Get ALL existing folders (not just first 10)
-      let allFolders: any[] = []
-      let nextLink = '/me/mailFolders?$top=100'  // Get 100 at a time
-      
-      while (nextLink) {
-        const response = await this.graphClient
-          .api(nextLink)
-          .get()
-        
-        allFolders = allFolders.concat(response.value)
-        nextLink = response['@odata.nextLink'] ? response['@odata.nextLink'].replace('https://graph.microsoft.com/v1.0', '') : null
-      }
-      
-      console.log(`Analyzing ${allFolders.length} existing folders for thread subject:`, thread.subject)
-      
-      // Analyze existing folders by looking at their names and potentially their contents
-      const candidateFolders = allFolders.filter((folder: any) => 
-        folder.displayName && 
-        !['Inbox', 'Sent Items', 'Drafts', 'Deleted Items', 'Junk Email', 'Outbox', 'AI Assistant Drafts'].includes(folder.displayName)
-      )
+      // Get cached folders for analysis
+      const cachedFolders = await this.getCachedFolders()
+      console.log(`Analyzing ${cachedFolders.length} cached folders for thread subject:`, thread.subject)
       
       // First, extract business entities from the thread
       const entities = this.extractBusinessEntities(thread)
       console.log('Extracted entities:', entities)
       
       // Look for exact matches with extracted entities
-      for (const folder of candidateFolders) {
+      for (const folder of cachedFolders) {
         const folderName = folder.displayName.toLowerCase()
         
         // Check if any extracted entity matches the folder name
@@ -366,31 +533,24 @@ export class MailboxManager {
         }
       }
       
-      // Enhanced content analysis - examine ALL folders, not just first 8
-      const folderScores: Array<{folder: any, score: number}> = []
+      // Enhanced content analysis using cached folders and themes
+      const folderScores: Array<{folder: FolderCacheEntry, score: number}> = []
       
-      for (const folder of candidateFolders) {
+      for (const folder of cachedFolders) {
         try {
-          // Sample messages from each folder to understand the topics/content
-          const messages = await this.graphClient
-            .api(`/me/mailFolders/${folder.id}/messages`)
-            .select('subject,body')
-            .top(20)  // Increased from 8 to get better understanding of folder content
-            .orderby('receivedDateTime desc')  // Get most recent messages
-            .get()
+          // Get or analyze themes for this folder
+          let themes = folder.themes
+          if (themes.length === 0) {
+            themes = await this.getFolderThemes(folder.id, folder.displayName)
+          }
           
-          if (messages.value && messages.value.length > 0) {
-            console.log(`Analyzing folder "${folder.displayName}" for content themes...`)
+          if (themes.length > 0) {
+            console.log(`Analyzing folder "${folder.displayName}" with themes: ${themes.join(', ')}`)
             
-            // Analyze the subjects and content to understand folder themes
-            const folderContent = messages.value.map((msg: any) => ({
-              subject: (msg.subject || '').toLowerCase(),
-              body: (msg.body?.content || '').toLowerCase().substring(0, 500) // First 500 chars
-            }))
+            // Calculate match score based on themes
+            const matchScore = this.calculateThemeMatchScore(thread, themes, folder.displayName)
             
-            const matchScore = this.calculateContentMatchScore(thread, folderContent, folder.displayName)
-            
-            if (matchScore > 0.3) { // Lowered from 60% to 30% for more reasonable matching
+            if (matchScore > 0.3) {
               folderScores.push({ folder, score: matchScore })
             }
           }
@@ -819,21 +979,11 @@ export class MailboxManager {
    */
   private async ensureTopicFolder(topicName: string): Promise<string> {
     try {
-      // Get ALL existing folders (not just first 10)
-      let allFolders: any[] = []
-      let nextLink = '/me/mailFolders?$top=100'
-      
-      while (nextLink) {
-        const response = await this.graphClient
-          .api(nextLink)
-          .get()
-        
-        allFolders = allFolders.concat(response.value)
-        nextLink = response['@odata.nextLink'] ? response['@odata.nextLink'].replace('https://graph.microsoft.com/v1.0', '') : null
-      }
+      // Get cached folders
+      const cachedFolders = await this.getCachedFolders()
 
-      // First, check for exact topic name match (e.g., "BiblioNexus")
-      let existingFolder = allFolders.find((folder: any) => 
+      // First, check for exact topic name match
+      let existingFolder = cachedFolders.find((folder) => 
         folder.displayName.toLowerCase() === topicName.toLowerCase()
       )
 
@@ -843,7 +993,7 @@ export class MailboxManager {
       }
 
       // Check for folders containing the topic name
-      existingFolder = allFolders.find((folder: any) => 
+      existingFolder = cachedFolders.find((folder) => 
         folder.displayName.toLowerCase().includes(topicName.toLowerCase()) ||
         topicName.toLowerCase().includes(folder.displayName.toLowerCase())
       )
@@ -862,6 +1012,11 @@ export class MailboxManager {
           isHidden: false
         })
 
+      console.log(`Successfully created folder: ${newFolder.displayName}`)
+      
+      // Invalidate cache after creating new folder
+      this.invalidateFolderCache()
+      
       return newFolder.id
 
     } catch (error) {
@@ -870,19 +1025,11 @@ export class MailboxManager {
       // If folder already exists (409 error), try to find it
       if (error.statusCode === 409) {
         try {
-          let retryFolders: any[] = []
-          let retryLink = '/me/mailFolders?$top=100'
+          // Invalidate cache and refresh to get the latest folder list
+          this.invalidateFolderCache()
+          const freshFolders = await this.getCachedFolders()
           
-          while (retryLink) {
-            const response = await this.graphClient
-              .api(retryLink)
-              .get()
-            
-            retryFolders = retryFolders.concat(response.value)
-            retryLink = response['@odata.nextLink'] ? response['@odata.nextLink'].replace('https://graph.microsoft.com/v1.0', '') : null
-          }
-          
-          const existingFolder = retryFolders.find((folder: any) => 
+          const existingFolder = freshFolders.find((folder) => 
             folder.displayName.toLowerCase() === topicName.toLowerCase()
           )
           
