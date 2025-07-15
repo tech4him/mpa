@@ -1170,6 +1170,8 @@ export class MailboxManager {
 
       // Move/copy all emails in the thread to the topic folder
       let movedCount = 0
+      const failedMessages: string[] = []
+      
       for (const message of thread.email_messages || []) {
         if (message.message_id) {
           try {
@@ -1181,16 +1183,33 @@ export class MailboxManager {
                 destinationId: topicFolderId
               })
             movedCount++
-          } catch (msgError) {
-            console.warn(`Could not move message ${message.id}:`, msgError)
+          } catch (msgError: any) {
+            console.warn(`Could not move message ${message.message_id}:`, msgError)
+            failedMessages.push(message.message_id)
+            
+            // If the message wasn't found (404), it might have been deleted or moved
+            // This is normal and shouldn't prevent other operations
+            if (msgError.statusCode === 404) {
+              console.log(`Message ${message.message_id} not found - may have been deleted or moved`)
+            }
           }
         }
       }
+      
+      // Log summary of filing operation
+      if (failedMessages.length > 0) {
+        console.log(`Filed ${movedCount} messages successfully, ${failedMessages.length} failed (likely deleted/moved already)`)
+      }
+
+      const totalMessages = thread.email_messages?.length || 0
+      const successMessage = movedCount === totalMessages 
+        ? `Successfully filed ${movedCount} emails to "${topicName}" folder`
+        : `Filed ${movedCount} of ${totalMessages} emails to "${topicName}" folder (some messages may have been already moved or deleted)`
 
       return {
-        success: true,
+        success: movedCount > 0, // Consider it successful if at least one message was moved
         folderId: topicFolderId,
-        message: `Filed ${movedCount} emails to "${topicName}" folder`
+        message: successMessage
       }
 
     } catch (error: any) {
