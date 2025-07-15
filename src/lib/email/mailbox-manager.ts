@@ -322,15 +322,23 @@ export class MailboxManager {
     const participants = thread.participants || []
     
     try {
-      // Get all existing folders first
-      const folders = await this.graphClient
-        .api('/me/mailFolders')
-        .get()
+      // Get ALL existing folders (not just first 10)
+      let allFolders: any[] = []
+      let nextLink = '/me/mailFolders?$top=100'  // Get 100 at a time
       
-      console.log('Analyzing existing folders for thread subject:', thread.subject)
+      while (nextLink) {
+        const response = await this.graphClient
+          .api(nextLink)
+          .get()
+        
+        allFolders = allFolders.concat(response.value)
+        nextLink = response['@odata.nextLink'] ? response['@odata.nextLink'].replace('https://graph.microsoft.com/v1.0', '') : null
+      }
+      
+      console.log(`Analyzing ${allFolders.length} existing folders for thread subject:`, thread.subject)
       
       // Analyze existing folders by looking at their names and potentially their contents
-      const candidateFolders = folders.value.filter((folder: any) => 
+      const candidateFolders = allFolders.filter((folder: any) => 
         folder.displayName && 
         !['Inbox', 'Sent Items', 'Drafts', 'Deleted Items', 'Junk Email', 'Outbox', 'AI Assistant Drafts'].includes(folder.displayName)
       )
@@ -811,13 +819,21 @@ export class MailboxManager {
    */
   private async ensureTopicFolder(topicName: string): Promise<string> {
     try {
-      // Get all existing folders
-      const folders = await this.graphClient
-        .api('/me/mailFolders')
-        .get()
+      // Get ALL existing folders (not just first 10)
+      let allFolders: any[] = []
+      let nextLink = '/me/mailFolders?$top=100'
+      
+      while (nextLink) {
+        const response = await this.graphClient
+          .api(nextLink)
+          .get()
+        
+        allFolders = allFolders.concat(response.value)
+        nextLink = response['@odata.nextLink'] ? response['@odata.nextLink'].replace('https://graph.microsoft.com/v1.0', '') : null
+      }
 
       // First, check for exact topic name match (e.g., "BiblioNexus")
-      let existingFolder = folders.value.find((folder: any) => 
+      let existingFolder = allFolders.find((folder: any) => 
         folder.displayName.toLowerCase() === topicName.toLowerCase()
       )
 
@@ -827,7 +843,7 @@ export class MailboxManager {
       }
 
       // Check for folders containing the topic name
-      existingFolder = folders.value.find((folder: any) => 
+      existingFolder = allFolders.find((folder: any) => 
         folder.displayName.toLowerCase().includes(topicName.toLowerCase()) ||
         topicName.toLowerCase().includes(folder.displayName.toLowerCase())
       )
@@ -854,11 +870,19 @@ export class MailboxManager {
       // If folder already exists (409 error), try to find it
       if (error.statusCode === 409) {
         try {
-          const folders = await this.graphClient
-            .api('/me/mailFolders')
-            .get()
+          let retryFolders: any[] = []
+          let retryLink = '/me/mailFolders?$top=100'
           
-          const existingFolder = folders.value.find((folder: any) => 
+          while (retryLink) {
+            const response = await this.graphClient
+              .api(retryLink)
+              .get()
+            
+            retryFolders = retryFolders.concat(response.value)
+            retryLink = response['@odata.nextLink'] ? response['@odata.nextLink'].replace('https://graph.microsoft.com/v1.0', '') : null
+          }
+          
+          const existingFolder = retryFolders.find((folder: any) => 
             folder.displayName.toLowerCase() === topicName.toLowerCase()
           )
           
