@@ -122,55 +122,30 @@ export async function GET(req: NextRequest) {
       }
       console.log('User record updated successfully')
 
-      // Create or update email account with token
-      console.log('Looking for existing email account...')
-      const { data: existingAccounts, error: accountLookupError } = await supabase
-        .from('email_accounts')
-        .select('id')
-        .eq('user_id', existingUser.id)
-        .eq('email_address', email)
-        .order('created_at', { ascending: false })
-        .limit(1)
-
-      const existingAccount = existingAccounts?.[0]
-      console.log('Email account lookup result:', { account: existingAccount, error: accountLookupError })
-
+      // Upsert email account with token (insert or update if exists)
+      console.log('Upserting email account...')
       const expiresAt = new Date(Date.now() + 3600 * 1000) // 1 hour from now
-
-      if (existingAccount) {
-        console.log('Updating existing email account:', existingAccount.id)
-        const { error: updateError } = await supabase
-          .from('email_accounts')
-          .update({
-            encrypted_access_token: encryptedRefreshToken,
-            access_token_expires_at: expiresAt.toISOString(),
-            sync_status: 'pending'
-          })
-          .eq('id', existingAccount.id)
-        
-        if (updateError) {
-          console.log('Email account update error:', updateError)
-          throw updateError
-        }
-        console.log('Email account updated successfully')
-      } else {
-        console.log('Creating new email account...')
-        const webhookSecret = crypto.randomBytes(32).toString('hex')
-        const { error: insertError } = await supabase.from('email_accounts').insert({
+      const webhookSecret = crypto.randomBytes(32).toString('hex')
+      
+      const { error: upsertError } = await supabase
+        .from('email_accounts')
+        .upsert({
           user_id: existingUser.id,
           email_address: email,
           encrypted_access_token: encryptedRefreshToken,
           access_token_expires_at: expiresAt.toISOString(),
           webhook_secret: webhookSecret,
           sync_status: 'pending'
+        }, {
+          onConflict: 'user_id,email_address',
+          ignoreDuplicates: false
         })
-        
-        if (insertError) {
-          console.log('Email account insert error:', insertError)
-          throw insertError
-        }
-        console.log('Email account created successfully')
+      
+      if (upsertError) {
+        console.log('Email account upsert error:', upsertError)
+        throw upsertError
       }
+      console.log('Email account upserted successfully')
 
       // Sign in to Supabase (use regular client for session cookies)
       console.log('Attempting to sign in user to Supabase...')
@@ -247,24 +222,29 @@ export async function GET(req: NextRequest) {
       }
       console.log('User record created successfully')
 
-      // Create email account with token
-      console.log('Creating email account with token...')
+      // Upsert email account with token (insert or update if exists)
+      console.log('Upserting email account with token...')
       const webhookSecret = crypto.randomBytes(32).toString('hex')
       const expiresAt = new Date(Date.now() + 3600 * 1000) // 1 hour from now
-      const { error: emailAccountError } = await supabase.from('email_accounts').insert({
-        user_id: userId,
-        email_address: email,
-        encrypted_access_token: encryptedRefreshToken,
-        access_token_expires_at: expiresAt.toISOString(),
-        webhook_secret: webhookSecret,
-        sync_status: 'pending',
-      })
+      const { error: emailAccountError } = await supabase
+        .from('email_accounts')
+        .upsert({
+          user_id: userId,
+          email_address: email,
+          encrypted_access_token: encryptedRefreshToken,
+          access_token_expires_at: expiresAt.toISOString(),
+          webhook_secret: webhookSecret,
+          sync_status: 'pending',
+        }, {
+          onConflict: 'user_id,email_address',
+          ignoreDuplicates: false
+        })
 
       if (emailAccountError) {
-        console.log('Email account insert error:', emailAccountError)
+        console.log('Email account upsert error:', emailAccountError)
         throw emailAccountError
       }
-      console.log('Email account created successfully')
+      console.log('Email account upserted successfully')
     }
 
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard`)

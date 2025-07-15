@@ -138,50 +138,21 @@ export class EmailSyncService {
           hasEncryptedToken: !!encryptedAccessToken
         })
         
-        // First check if email account exists
-        const { data: existingAccount } = await supabase
+        // Upsert email account (insert or update if exists)
+        const { data: upsertResult, error: upsertError } = await supabase
           .from('email_accounts')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('email_address', user.email)
-          .single()
-
-        let upsertResult, upsertError
-        
-        if (existingAccount) {
-          // Update existing account
-          console.log('Updating existing email account:', existingAccount.id)
-          const { data, error } = await supabase
-            .from('email_accounts')
-            .update({
-              encrypted_access_token: encryptedAccessToken,
-              access_token_expires_at: expiresAt.toISOString()
-              // Don't update last_sync here - it should only be updated after successful email processing
-            })
-            .eq('id', existingAccount.id)
-            .select()
-          
-          console.log('Email account update result:', { success: !error, id: existingAccount.id })
-          
-          upsertResult = data
-          upsertError = error
-        } else {
-          // Insert new account
-          const { data, error } = await supabase
-            .from('email_accounts')
-            .insert({
-              user_id: userId,
-              email_address: user.email,
-              encrypted_access_token: encryptedAccessToken,
-              access_token_expires_at: expiresAt.toISOString(),
-              webhook_secret: crypto.randomBytes(32).toString('hex')
-              // Don't set last_sync on account creation - let first sync determine when to start from
-            })
-            .select()
-          
-          upsertResult = data
-          upsertError = error
-        }
+          .upsert({
+            user_id: userId,
+            email_address: user.email,
+            encrypted_access_token: encryptedAccessToken,
+            access_token_expires_at: expiresAt.toISOString(),
+            webhook_secret: crypto.randomBytes(32).toString('hex')
+            // Don't update last_sync here - it should only be updated after successful email processing
+          }, {
+            onConflict: 'user_id,email_address',
+            ignoreDuplicates: false
+          })
+          .select()
         
         if (upsertError) {
           console.error('Upsert error:', upsertError)

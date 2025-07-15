@@ -42,11 +42,12 @@ export interface AgentDecision {
   action: string
   confidence: number
   reasoning: string
-  requiresApproval: boolean
-  context: any
+  requiresApproval?: boolean
+  context?: any
+  metadata?: any
 }
 
-export abstract class BaseAgent extends EventEmitter {
+export abstract class BaseAgent<TItem = any, TDecision = AgentDecision> extends EventEmitter {
   protected status: AgentStatus = 'idle'
   protected metrics: AgentMetrics = {
     processed: 0,
@@ -130,14 +131,57 @@ export abstract class BaseAgent extends EventEmitter {
   protected abstract run(): Promise<void>
 
   // Process a single item - must be implemented by subclasses
-  protected abstract processItem(item: any): Promise<void>
+  protected abstract processItem(item: TItem, decision: TDecision): Promise<void>
+  
+  // Analyze an item - must be implemented by subclasses
+  protected abstract analyzeItem(item: TItem): Promise<TDecision>
 
   // Get items to process - must be implemented by subclasses
-  protected abstract getItemsToProcess(): Promise<any[]>
+  protected abstract getItemsToProcess(): Promise<TItem[]>
+  
+  // Get item type for logging - must be implemented by subclasses
+  protected abstract getItemType(): string
 
   // Helper methods
   protected async sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  protected async logAction(action: {
+    action_type: string
+    email_id?: string
+    thread_id?: string
+    description: string
+    metadata?: any
+  }): Promise<void> {
+    const supabase = await createClient()
+    await supabase.from('agent_actions').insert({
+      agent_id: this.config.id,
+      user_id: this.config.userId,
+      action_type: action.action_type,
+      email_id: action.email_id,
+      thread_id: action.thread_id,
+      description: action.description,
+      metadata: action.metadata || {},
+      status: 'completed'
+    })
+  }
+
+  protected async flagForReview(item: TItem, priority: number = 3): Promise<void> {
+    const supabase = await createClient()
+    await supabase.from('intelligent_actions').insert({
+      user_id: this.config.userId,
+      action_type: 'flagged_for_review',
+      title: `Item flagged for review by ${this.config.name}`,
+      description: `Item requires manual review`,
+      priority: priority,
+      status: 'pending',
+      metadata: {
+        item: item,
+        flaggedBy: this.config.id,
+        itemType: this.getItemType()
+      }
+    })
   }
 
   protected async shouldProcess(item: any, decision: AgentDecision): Promise<boolean> {
@@ -178,6 +222,26 @@ export abstract class BaseAgent extends EventEmitter {
   }
 
   protected async requestApproval(item: any, decision: AgentDecision): Promise<void> {
+    const supabase = await createClient()
+    
+    // Check if approval already exists for this item
+    const itemId = item.id || item.thread_id
+    if (itemId) {
+      const { data: existingApproval } = await supabase
+        .from('agent_approvals')
+        .select('id')
+        .eq('user_id', this.config.userId)
+        .eq('agent_id', this.config.id)
+        .eq('status', 'pending')
+        .eq('item_data->>id', itemId)
+        .single()
+      
+      if (existingApproval) {
+        console.log(`[${this.config.name}] Approval already exists for item: ${itemId}`)
+        return
+      }
+    }
+
     await this.emitEvent({
       type: 'agent.approval_requested',
       agentId: this.config.id,
@@ -187,7 +251,6 @@ export abstract class BaseAgent extends EventEmitter {
     })
     
     // Store in database for user review
-    const supabase = await createClient()
     await supabase.from('agent_approvals').insert({
       agent_id: this.config.id,
       user_id: this.config.userId,
@@ -196,6 +259,8 @@ export abstract class BaseAgent extends EventEmitter {
       decision,
       status: 'pending'
     })
+    
+    console.log(`[${this.config.name}] Created approval request for: ${item.subject || item.id || 'unknown item'}`)
   }
 
   protected async notifyUser(item: any, decision: AgentDecision): Promise<void> {
@@ -236,10 +301,20 @@ export abstract class BaseAgent extends EventEmitter {
     // Emit locally
     this.emit(event.type, event)
     
-    // Broadcast to other agents via QStash
+    // Broadcast to other agents via QStash (skip for localhost)
     try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+      
+      // Skip QStash publishing for localhost/development
+      if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+        console.log(`[${this.config.name}] Skipping QStash event publishing in development mode`)
+        return
+      }
+      
+      const eventUrl = baseUrl.startsWith('http') ? `${baseUrl}/api/agents/events` : `https://${baseUrl}/api/agents/events`
+      
       await this.qstash.publishJSON({
-        url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/agents/events`,
+        url: eventUrl,
         body: event,
         retries: 3
       })

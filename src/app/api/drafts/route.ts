@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const threadId = searchParams.get('threadId')
+  const status = searchParams.get('status')
 
   try {
     const supabase = await createClient()
@@ -23,6 +24,10 @@ export async function GET(request: NextRequest) {
       query = query.eq('thread_id', threadId)
     }
 
+    if (status) {
+      query = query.eq('status', status)
+    }
+
     const { data: drafts, error } = await query
 
     if (error) {
@@ -30,7 +35,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch drafts' }, { status: 500 })
     }
 
-    return NextResponse.json(drafts || [])
+    return NextResponse.json({ drafts: drafts || [] })
   } catch (error) {
     console.error('Drafts API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

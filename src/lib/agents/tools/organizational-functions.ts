@@ -1,61 +1,49 @@
 import { createClient } from '@/lib/supabase/server'
 import { VectorStoreService } from '@/lib/vector-store/service'
-import { tool } from '@openai/agents'
 
-// Initialize vector store service
-const vectorStoreService = new VectorStoreService()
-
-// Tool for searching project context
-export const searchProjectContext = tool({
-  name: 'searchProjectContext',
-  description: 'Search for project-related context and information from the organizational knowledge base',
-  parameters: {
-    type: 'object',
-    properties: {
-      query: {
-        type: 'string',
-        description: 'Search query for project context'
-      },
-      projectName: {
-        type: 'string',
-        description: 'Specific project name to search for (optional)'
-      },
-      participants: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'List of email participants to find related projects'
-      }
-    },
-    required: ['query']
+// Initialize vector store service lazily to avoid environment variable issues
+let vectorStoreService: VectorStoreService | null = null
+function getVectorStoreService(): VectorStoreService {
+  if (!vectorStoreService) {
+    vectorStoreService = new VectorStoreService()
   }
-}, async ({ query, projectName, participants }) => {
+  return vectorStoreService
+}
+
+// Pure function implementations that can be called directly or wrapped in tools
+
+export async function searchProjectContext({ query }: { query: string }) {
+  console.log('searchProjectContext called with query:', query)
   try {
     const supabase = await createClient()
     
-    // Search vector store for project context
-    const vectorResults = await vectorStoreService.searchDocuments(query, {
-      filter: {
-        document_type: 'project',
-        ...(projectName && { project_name: projectName })
-      },
-      topK: 5
-    })
+    // Parse query for specific project names and email addresses
+    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g
+    const participants = query.match(emailRegex) || []
     
-    // Get project details from database
-    let projectData = null
-    if (projectName) {
-      const { data } = await supabase
-        .from('project_context')
-        .select('*')
-        .eq('project_name', projectName)
-        .single()
-      
-      projectData = data
+    // Try to search vector store for project context, but continue if it fails
+    let vectorResults = null
+    try {
+      vectorResults = await getVectorStoreService().searchDocuments(query, {
+        filter: {
+          document_type: 'project'
+        },
+        topK: 5
+      })
+    } catch (vectorError) {
+      console.log('Vector store search failed, continuing with database search:', vectorError.message)
     }
     
-    // Search for projects involving participants
+    // Search for projects in database that might match the query
+    const { data: projectMatches } = await supabase
+      .from('project_context')
+      .select('*')
+      .textSearch('project_name', query.replace(/[^\w\s]/g, ''))
+      .limit(3)
+    
+    // Search for projects involving participants if any email addresses found
     let participantProjects = []
-    if (participants && participants.length > 0) {
+    if (participants.length > 0) {
       const { data } = await supabase
         .from('project_context')
         .select('*')
@@ -67,8 +55,9 @@ export const searchProjectContext = tool({
     
     return {
       vectorResults: vectorResults.documents,
-      projectDetails: projectData,
+      projectMatches: projectMatches || [],
       participantProjects: participantProjects,
+      participantsFound: participants,
       relevanceScore: vectorResults.relevanceScore
     }
   } catch (error) {
@@ -76,33 +65,20 @@ export const searchProjectContext = tool({
     return {
       error: 'Failed to search project context',
       vectorResults: [],
-      projectDetails: null,
-      participantProjects: []
+      projectMatches: [],
+      participantProjects: [],
+      participantsFound: []
     }
   }
-})
+}
 
-// Tool for searching relationship history
-export const searchRelationshipHistory = tool({
-  name: 'searchRelationshipHistory',
-  description: 'Search for interaction history and communication patterns with specific contacts',
-  parameters: {
-    type: 'object',
-    properties: {
-      contacts: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'List of contact emails to search for'
-      },
-      timeframe: {
-        type: 'string',
-        description: 'Time period for history search (e.g., "last_30_days", "last_6_months")',
-        enum: ['last_7_days', 'last_30_days', 'last_3_months', 'last_6_months', 'last_year']
-      }
-    },
-    required: ['contacts']
-  }
-}, async ({ contacts, timeframe = 'last_6_months' }) => {
+export async function searchRelationshipHistory({ 
+  contacts, 
+  timeframe = 'last_6_months' 
+}: { 
+  contacts: string[]
+  timeframe?: 'last_7_days' | 'last_30_days' | 'last_3_months' | 'last_6_months' | 'last_year'
+}) {
   try {
     const supabase = await createClient()
     
@@ -115,7 +91,7 @@ export const searchRelationshipHistory = tool({
       'last_year': 365
     }
     
-    const daysBack = timeframeMap[timeframe as keyof typeof timeframeMap] || 180
+    const daysBack = timeframeMap[timeframe] || 180
     const startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
     
     // Get relationship intelligence
@@ -155,33 +131,20 @@ export const searchRelationshipHistory = tool({
       communicationPatterns: {}
     }
   }
-})
+}
 
-// Tool for verifying organizational facts
-export const verifyOrganizationalFacts = tool({
-  name: 'verifyOrganizationalFacts',
-  description: 'Verify claims or facts against the organizational knowledge base',
-  parameters: {
-    type: 'object',
-    properties: {
-      claims: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'List of claims or facts to verify'
-      },
-      context: {
-        type: 'string',
-        description: 'Additional context for verification'
-      }
-    },
-    required: ['claims']
-  }
-}, async ({ claims, context }) => {
+export async function verifyOrganizationalFacts({ 
+  claims, 
+  context = '' 
+}: { 
+  claims: string[]
+  context?: string 
+}) {
   try {
     const verifications = await Promise.all(
       claims.map(async (claim) => {
         // Search vector store for supporting evidence
-        const evidence = await vectorStoreService.searchDocuments(claim, {
+        const evidence = await getVectorStoreService().searchDocuments(claim, {
           topK: 3
         })
         
@@ -212,28 +175,16 @@ export const verifyOrganizationalFacts = tool({
       overallConfidence: 0
     }
   }
-})
+}
 
-// Tool for getting email thread context
-export const getEmailThreadContext = tool({
-  name: 'getEmailThreadContext',
-  description: 'Get comprehensive context for an email thread including history, participants, and related information',
-  parameters: {
-    type: 'object',
-    properties: {
-      threadId: {
-        type: 'string',
-        description: 'The ID of the email thread'
-      },
-      includeHistory: {
-        type: 'boolean',
-        description: 'Whether to include full message history',
-        default: true
-      }
-    },
-    required: ['threadId']
-  }
-}, async ({ threadId, includeHistory = true }) => {
+export async function getEmailThreadContext({ 
+  threadId, 
+  includeHistory = true 
+}: { 
+  threadId: string
+  includeHistory?: boolean 
+}) {
+  console.log('getEmailThreadContext called with threadId:', threadId)
   try {
     const supabase = await createClient()
     
@@ -296,38 +247,26 @@ export const getEmailThreadContext = tool({
       drafts: []
     }
   }
-})
+}
 
-// Tool for updating organizational memory
-export const updateOrganizationalMemory = tool({
-  name: 'updateOrganizationalMemory',
-  description: 'Update the organizational knowledge base with new information from email interactions',
-  parameters: {
-    type: 'object',
-    properties: {
-      documentType: {
-        type: 'string',
-        description: 'Type of document to store',
-        enum: ['email', 'decision', 'project', 'meeting', 'relationship']
-      },
-      content: {
-        type: 'string',
-        description: 'Content to store in the knowledge base'
-      },
-      metadata: {
-        type: 'object',
-        description: 'Additional metadata for the document'
-      },
-      significance: {
-        type: 'number',
-        description: 'Significance score (0-1) for this information',
-        minimum: 0,
-        maximum: 1
-      }
-    },
-    required: ['documentType', 'content']
+export async function updateOrganizationalMemory({ 
+  documentType, 
+  content, 
+  metadata, 
+  significance = 0.5 
+}: {
+  documentType: 'email' | 'decision' | 'project' | 'meeting' | 'relationship' | 'briefing'
+  content: string
+  metadata: {
+    source?: string
+    priority?: number
+    tags?: string[]
+    project_name?: string
+    participants?: string[]
+    briefingDate?: string
   }
-}, async ({ documentType, content, metadata = {}, significance = 0.5 }) => {
+  significance?: number
+}) {
   try {
     const supabase = await createClient()
     
@@ -346,10 +285,14 @@ export const updateOrganizationalMemory = tool({
         document_type: documentType,
         content,
         metadata: {
-          ...metadata,
+          source: metadata?.source || 'email_interaction',
+          priority: metadata?.priority || 3,
+          tags: metadata?.tags || [],
+          project_name: metadata?.project_name || '',
+          participants: metadata?.participants || [],
+          briefingDate: metadata?.briefingDate,
           significance,
-          created_by: 'ai_agent',
-          source: 'email_interaction'
+          created_by: 'ai_agent'
         }
       })
       .select()
@@ -358,10 +301,14 @@ export const updateOrganizationalMemory = tool({
     if (error) throw error
     
     // Also store in vector store for search
-    await vectorStoreService.storeDocument(content, {
+    await getVectorStoreService().storeDocument(content, {
       documentType,
       significance,
-      ...metadata
+      source: metadata?.source || 'email_interaction',
+      priority: metadata?.priority || 3,
+      tags: metadata?.tags || [],
+      project_name: metadata?.project_name || '',
+      participants: metadata?.participants || []
     })
     
     return {
@@ -377,7 +324,7 @@ export const updateOrganizationalMemory = tool({
       stored: false
     }
   }
-})
+}
 
 // Helper functions
 function analyzeInteractionPatterns(threads: any[]) {
@@ -426,7 +373,7 @@ function extractCommunicationPatterns(relationships: any[]) {
 }
 
 async function getParticipantIntelligence(participants: string[]) {
-  const supabase = createServerClient()
+  const supabase = await createClient()
   
   const { data: contacts } = await supabase
     .from('contacts')

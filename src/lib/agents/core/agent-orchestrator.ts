@@ -299,6 +299,17 @@ export class AgentOrchestrator extends EventEmitter {
   async approveAction(approvalId: string): Promise<void> {
     const supabase = await createClient()
     
+    // Get the approval details first
+    const { data: approval, error: fetchError } = await supabase
+      .from('agent_approvals')
+      .select('*')
+      .eq('id', approvalId)
+      .single()
+
+    if (fetchError || !approval) {
+      throw new Error('Approval not found')
+    }
+
     // Update approval status
     await supabase
       .from('agent_approvals')
@@ -308,7 +319,30 @@ export class AgentOrchestrator extends EventEmitter {
       })
       .eq('id', approvalId)
 
-    // TODO: Trigger the agent to execute the approved action
+    // Execute the approved action
+    try {
+      await this.executeApprovedAction(approval)
+      
+      // Update approval with execution status
+      await supabase
+        .from('agent_approvals')
+        .update({ 
+          executed_at: new Date().toISOString(),
+          execution_status: 'completed'
+        })
+        .eq('id', approvalId)
+    } catch (error) {
+      console.error('Failed to execute approved action:', error)
+      
+      // Update approval with failure status
+      await supabase
+        .from('agent_approvals')
+        .update({ 
+          execution_status: 'failed',
+          execution_error: error instanceof Error ? error.message : 'Unknown error'
+        })
+        .eq('id', approvalId)
+    }
   }
 
   async rejectAction(approvalId: string, reason?: string): Promise<void> {
@@ -322,5 +356,96 @@ export class AgentOrchestrator extends EventEmitter {
         rejection_reason: reason
       })
       .eq('id', approvalId)
+  }
+
+  private async executeApprovedAction(approval: any): Promise<void> {
+    const agent = this.agents.get(approval.agent_id)
+    if (!agent) {
+      throw new Error(`Agent ${approval.agent_id} not found`)
+    }
+
+    // Extract the item and decision from the approval
+    const item = approval.item_data
+    const decision = approval.decision
+
+    // Execute the action based on the decision type
+    switch (decision.action) {
+      case 'generate_reply':
+        await this.executeGenerateReply(agent, item, decision)
+        break
+      
+      case 'send_email':
+        await this.executeSendEmail(agent, item, decision)
+        break
+        
+      case 'archive_email':
+        await this.executeArchiveEmail(agent, item, decision)
+        break
+        
+      case 'flag_for_review':
+        await this.executeFlagForReview(agent, item, decision)
+        break
+        
+      case 'mark_as_read':
+        await this.executeMarkAsRead(agent, item, decision)
+        break
+        
+      default:
+        throw new Error(`Unsupported action type: ${decision.action}`)
+    }
+  }
+
+  private async executeGenerateReply(agent: any, item: any, decision: any): Promise<void> {
+    // Delegate to the agent's generate reply method
+    if (typeof agent.generateReply === 'function') {
+      await agent.generateReply(item)
+    } else {
+      throw new Error('Agent does not support reply generation')
+    }
+  }
+
+  private async executeSendEmail(agent: any, item: any, decision: any): Promise<void> {
+    // Use the sendEmail function we created
+    const { sendEmail } = await import('@/lib/microsoft-graph/email')
+    
+    const result = await sendEmail(this.userId, {
+      to: item.replyTo ? [item.replyTo] : [item.from],
+      subject: decision.metadata?.subject || `Re: ${item.subject}`,
+      body: decision.metadata?.content || 'This email was sent automatically.',
+      isHtml: true,
+      inReplyToId: item.id,
+      threadId: item.threadId
+    })
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to send email')
+    }
+  }
+
+  private async executeArchiveEmail(agent: any, item: any, decision: any): Promise<void> {
+    // Delegate to the agent's archive method
+    if (typeof agent.archiveEmail === 'function') {
+      await agent.archiveEmail(item)
+    } else {
+      throw new Error('Agent does not support email archiving')
+    }
+  }
+
+  private async executeFlagForReview(agent: any, item: any, decision: any): Promise<void> {
+    // Delegate to the agent's flag for review method
+    if (typeof agent.flagForReview === 'function') {
+      await agent.flagForReview(item, decision.metadata?.priority || 3)
+    } else {
+      throw new Error('Agent does not support flagging for review')
+    }
+  }
+
+  private async executeMarkAsRead(agent: any, item: any, decision: any): Promise<void> {
+    // Delegate to the agent's mark as read method
+    if (typeof agent.markAsRead === 'function') {
+      await agent.markAsRead(item)
+    } else {
+      throw new Error('Agent does not support marking as read')
+    }
   }
 }

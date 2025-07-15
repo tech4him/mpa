@@ -1,15 +1,17 @@
 import { Agent, tool } from '@openai/agents';
 import { VectorStoreService } from '@/lib/vector-store/service';
-// import { 
-//   searchProjectContext, 
-//   searchRelationshipHistory, 
-//   verifyOrganizationalFacts, 
-//   getEmailThreadContext, 
-//   updateOrganizationalMemory 
-// } from './tools/organizational-tools';
+import { agentLearningService, LearningContext } from './learning-service';
+import { 
+  searchProjectContextTool, 
+  searchRelationshipHistoryTool, 
+  verifyOrganizationalFactsTool, 
+  getEmailThreadContextTool, 
+  updateOrganizationalMemoryTool 
+} from './tools/organizational-tools';
 
-// Initialize vector store service
-const vectorStoreService = new VectorStoreService();
+// Initialize vector store service lazily to avoid environment variable issues
+// Note: The VectorStoreService is not used directly in this file, 
+// but via the organizational tools which handle their own initialization
 
 // Enhanced email agent with organizational context tools
 export const simpleEmailAgent = new Agent({
@@ -50,12 +52,111 @@ When analyzing emails:
 
 Always explain your reasoning and cite the tools you used to gather context.`,
   tools: [
-    // Custom organizational tools - temporarily disabled for build
-    // searchProjectContext,
-    // searchRelationshipHistory,
-    // verifyOrganizationalFacts,
-    // getEmailThreadContext,
-    // updateOrganizationalMemory
+    // Custom organizational tools
+    searchProjectContextTool,
+    searchRelationshipHistoryTool,
+    verifyOrganizationalFactsTool,
+    getEmailThreadContextTool,
+    updateOrganizationalMemoryTool
+  ]
+});
+
+// Learning-enhanced decision tool
+const makeDecisionWithLearning = tool({
+  name: 'makeDecisionWithLearning',
+  description: 'Make email processing decisions enhanced by past user feedback and learning',
+  parameters: {
+    type: 'object',
+    properties: {
+      userId: { type: 'string', description: 'User ID for learning context' },
+      agentId: { type: 'string', description: 'Agent ID for learning context' },
+      emailFrom: { type: 'string', description: 'Email sender address' },
+      emailSubject: { type: 'string', description: 'Email subject line' },
+      emailCategory: { type: 'string', description: 'Detected email category' },
+      emailPriority: { type: 'string', description: 'Email priority level' },
+      proposedAction: { type: 'string', description: 'Proposed action to take' },
+      confidence: { type: 'number', description: 'Initial confidence in decision (0-1)' },
+      reasoning: { type: 'string', description: 'Reasoning for the decision' }
+    },
+    required: ['userId', 'agentId', 'proposedAction', 'confidence', 'reasoning']
+  },
+  async function({ userId, agentId, emailFrom, emailSubject, emailCategory, emailPriority, proposedAction, confidence, reasoning }) {
+    try {
+      const now = new Date()
+      const context: LearningContext = {
+        emailFrom,
+        emailSubject,
+        emailCategory,
+        emailPriority,
+        timeOfDay: now.getHours().toString(),
+        dayOfWeek: now.toLocaleDateString('en-US', { weekday: 'long' })
+      }
+
+      const suggestions = await agentLearningService.getActionSuggestions(
+        userId,
+        agentId,
+        context,
+        proposedAction,
+        confidence
+      )
+
+      const result = {
+        originalAction: proposedAction,
+        originalConfidence: confidence,
+        originalReasoning: reasoning,
+        suggestedAction: suggestions.adjustedAction || proposedAction,
+        adjustedConfidence: suggestions.adjustedConfidence,
+        learningInsights: suggestions.learningInsights,
+        warnings: suggestions.warnings,
+        hasLearningData: suggestions.learningInsights.length > 0 || suggestions.warnings.length > 0
+      }
+
+      return JSON.stringify(result, null, 2)
+    } catch (error) {
+      console.error('Error in makeDecisionWithLearning:', error)
+      return JSON.stringify({
+        originalAction: proposedAction,
+        originalConfidence: confidence,
+        originalReasoning: reasoning,
+        suggestedAction: proposedAction,
+        adjustedConfidence: confidence,
+        learningInsights: [],
+        warnings: [],
+        hasLearningData: false,
+        error: 'Failed to apply learning'
+      })
+    }
+  }
+})
+
+// Add the learning tool to the agent
+export const learningEnhancedEmailAgent = new Agent({
+  name: 'Learning-Enhanced Email Assistant',
+  model: 'gpt-4o',
+  instructions: `You are an intelligent email assistant that learns from user feedback to improve decision-making.
+
+Your responsibilities:
+1. Analyze emails with organizational context
+2. Make decisions enhanced by past user feedback
+3. Apply learning from previous corrections
+4. Generate responses based on learned preferences
+
+When processing emails:
+1. First gather context using organizational tools
+2. Make initial decision based on analysis
+3. Use makeDecisionWithLearning to apply user feedback and learning
+4. Present final recommendation with learning insights
+5. Include confidence adjustments based on past performance
+
+Always explain how learning influenced your decision and highlight any warnings from past feedback.`,
+  
+  tools: [
+    searchProjectContextTool,
+    searchRelationshipHistoryTool,
+    verifyOrganizationalFactsTool,
+    getEmailThreadContextTool,
+    updateOrganizationalMemoryTool,
+    makeDecisionWithLearning
   ]
 });
 

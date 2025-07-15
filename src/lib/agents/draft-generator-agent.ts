@@ -64,7 +64,9 @@ export async function generateDraftWithAgent(request: DraftRequest): Promise<{
     })) || [];
 
     // Use agent to generate draft with full organizational context
-    const response = await run(simpleEmailAgent, `Generate a ${request.draftType} email draft with full organizational context.
+    let response
+    try {
+      response = await run(simpleEmailAgent, `Generate a ${request.draftType} email draft with full organizational context.
 
 First, use your available tools to gather comprehensive context:
 1. Use getEmailThreadContext to get the full thread history and context
@@ -131,6 +133,20 @@ Provide your response in JSON format:
     "writing_style": "detected user style"
   }
 }`);
+    } catch (error: any) {
+      console.error('Agent draft generation error:', error)
+      
+      // Handle OpenAI service errors gracefully
+      if (error.status === 500 || error.code === 'server_error') {
+        throw new Error('OpenAI service is temporarily unavailable. Please try again in a few minutes.')
+      } else if (error.status === 429 || error.code === 'rate_limit_exceeded') {
+        throw new Error('Rate limit exceeded. Please wait a moment and try again.')
+      } else if (error.status === 401 || error.code === 'invalid_api_key') {
+        throw new Error('OpenAI API authentication failed. Please check your API key configuration.')
+      } else {
+        throw new Error(`Draft generation failed: ${error.message || 'Unknown error'}`)
+      }
+    }
 
     // Parse the agent's response
     const draftData = parseAgentDraft(response.finalOutput || '');

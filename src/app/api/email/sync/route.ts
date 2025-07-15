@@ -22,24 +22,27 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (!emailAccount) {
-      // Create email account record if it doesn't exist
+      // Upsert email account record if it doesn't exist
       const webhookSecret = crypto.randomBytes(32).toString('hex')
-      const { data: newAccount, error: insertError } = await supabase
+      const { data: newAccount, error: upsertError } = await supabase
         .from('email_accounts')
-        .insert({
+        .upsert({
           user_id: user.id,
           email_address: user.email || '',
           webhook_secret: webhookSecret,
           sync_status: 'pending',
+        }, {
+          onConflict: 'user_id,email_address',
+          ignoreDuplicates: false
         })
         .select()
         .single()
       
-      if (insertError) {
-        console.error('Failed to create email account:', insertError)
+      if (upsertError) {
+        console.error('Failed to upsert email account:', upsertError)
         return NextResponse.json({ 
-          error: 'Failed to create email account', 
-          details: insertError.message 
+          error: 'Failed to upsert email account', 
+          details: upsertError.message 
         }, { status: 500 })
       }
       

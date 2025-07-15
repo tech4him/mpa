@@ -7,6 +7,9 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { 
   Bot, 
   Play, 
@@ -22,7 +25,15 @@ import {
   Brain,
   Users,
   Mail,
-  RefreshCw
+  RefreshCw,
+  MessageSquare,
+  ThumbsUp,
+  ThumbsDown,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  User,
+  AtSign
 } from 'lucide-react'
 
 interface AgentStatus {
@@ -57,6 +68,17 @@ export function AgentMissionControl() {
   const [approvals, setApprovals] = useState<Approval[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [feedbackDialog, setFeedbackDialog] = useState<{
+    open: boolean
+    approval: Approval | null
+    action: 'approve' | 'reject'
+  }>({ open: false, approval: null, action: 'approve' })
+  const [feedback, setFeedback] = useState({
+    reasoning: '',
+    correctAction: '',
+    confidence: ''
+  })
+  const [expandedApprovals, setExpandedApprovals] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     loadAgentStatuses()
@@ -85,9 +107,27 @@ export function AgentMissionControl() {
 
   const loadApprovals = async () => {
     try {
-      const response = await fetch('/api/agents/orchestrator?action=approvals')
-      const data = await response.json()
-      setApprovals(data.approvals || [])
+      // Fetch both agent approvals and pending email drafts
+      const [approvalsResponse, draftsResponse] = await Promise.all([
+        fetch('/api/agents/orchestrator?action=approvals'),
+        fetch('/api/drafts?status=pending_review')
+      ])
+      
+      const approvalsData = await approvalsResponse.json()
+      const draftsData = await draftsResponse.json()
+      
+      // Combine both types of approvals
+      const agentApprovals = approvalsData.approvals || []
+      const pendingDrafts = (draftsData.drafts || []).map((draft: any) => ({
+        id: draft.id,
+        agent_id: 'email_agent',
+        item_type: 'email_draft',
+        item_data: draft,
+        decision: null,
+        created_at: draft.created_at
+      }))
+      
+      setApprovals([...agentApprovals, ...pendingDrafts])
     } catch (error) {
       console.error('Failed to load approvals:', error)
     }
@@ -109,20 +149,98 @@ export function AgentMissionControl() {
     }
   }
 
-  const handleApproval = async (approvalId: string, action: 'approve' | 'reject') => {
+  const openFeedbackDialog = (approval: Approval, action: 'approve' | 'reject') => {
+    setFeedbackDialog({ open: true, approval, action })
+    setFeedback({ reasoning: '', correctAction: '', confidence: '' })
+  }
+
+  const handleApproval = async (quick: boolean = false) => {
+    if (!feedbackDialog.approval) return
+
     try {
-      await fetch('/api/agents/orchestrator', {
+      const payload: any = {
+        approvalId: feedbackDialog.approval.id,
+        action: feedbackDialog.action
+      }
+
+      if (!quick && (feedback.reasoning || feedback.correctAction)) {
+        payload.reasoning = feedback.reasoning
+        payload.correctAction = feedback.correctAction
+        payload.feedback = {
+          reasoning: feedback.reasoning,
+          suggestedConfidence: feedback.confidence
+        }
+      }
+
+      await fetch('/api/agents/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action, 
-          approvalId,
-          ...(action === 'reject' && { reason: 'User rejected' })
-        })
+        body: JSON.stringify(payload)
       })
+
+      setFeedbackDialog({ open: false, approval: null, action: 'approve' })
+      await loadApprovals()
+    } catch (error) {
+      console.error(`Failed to ${feedbackDialog.action} approval:`, error)
+    }
+  }
+
+  const handleQuickApproval = async (approvalId: string, action: 'approve' | 'reject') => {
+    try {
+      // Find the approval to determine if it's an email draft
+      const approval = approvals.find(a => a.id === approvalId)
+      
+      if (approval?.item_type === 'email_draft') {
+        // Handle email draft approval
+        const newStatus = action === 'approve' ? 'approved' : 'rejected'
+        await fetch(`/api/drafts/${approvalId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            status: newStatus,
+            feedback: action === 'reject' ? 'Quick rejection from Mission Control' : 'Quick approval from Mission Control'
+          })
+        })
+      } else {
+        // Handle agent approval (existing logic)
+        await fetch('/api/agents/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            approvalId, 
+            action,
+            reasoning: action === 'reject' ? 'Quick rejection' : 'Quick approval'
+          })
+        })
+      }
+      
       await loadApprovals()
     } catch (error) {
       console.error(`Failed to ${action} approval:`, error)
+    }
+  }
+
+  const toggleApprovalExpansion = (approvalId: string) => {
+    const newExpanded = new Set(expandedApprovals)
+    if (newExpanded.has(approvalId)) {
+      newExpanded.delete(approvalId)
+    } else {
+      newExpanded.add(approvalId)
+    }
+    setExpandedApprovals(newExpanded)
+  }
+
+  const convertHtmlToPlainText = (html: string) => {
+    if (!html) return 'No content available'
+    
+    try {
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(html, 'text/html')
+      const textContent = doc.body.textContent || doc.body.innerText || ''
+      return textContent.trim() || 'No content available'
+    } catch (error) {
+      // If parsing fails, try to strip HTML tags with regex as fallback
+      return html.replace(/<[^>]*>/g, '').trim() || 'No content available'
     }
   }
 
@@ -401,16 +519,19 @@ export function AgentMissionControl() {
                   <div className="flex items-center justify-between">
                     <div>
                       <CardTitle className="text-lg">
-                        Agent Approval Required
+                        {approval.item_type === 'email_draft' ? 'Email Draft Approval Required' : 'Agent Approval Required'}
                       </CardTitle>
                       <CardDescription>
                         {approval.agent_id} • {approval.item_type} • {new Date(approval.created_at).toLocaleString()}
+                        {approval.item_type === 'email_draft' && approval.item_data?.subject && (
+                          <> • {approval.item_data.subject}</>
+                        )}
                       </CardDescription>
                     </div>
                     <div className="flex space-x-2">
                       <Button
                         size="sm"
-                        onClick={() => handleApproval(approval.id, 'approve')}
+                        onClick={() => handleQuickApproval(approval.id, 'approve')}
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
                         Approve
@@ -418,31 +539,180 @@ export function AgentMissionControl() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => handleApproval(approval.id, 'reject')}
+                        onClick={() => handleQuickApproval(approval.id, 'reject')}
                       >
                         <XCircle className="h-4 w-4 mr-2" />
                         Reject
                       </Button>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => openFeedbackDialog(approval, 'reject')}
+                          >
+                            <MessageSquare className="h-4 w-4 mr-2" />
+                            Give Feedback
+                          </Button>
+                        </DialogTrigger>
+                      </Dialog>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    <div>
-                      <h4 className="font-medium mb-2">Proposed Action:</h4>
-                      <Badge>{approval.decision.action}</Badge>
-                      <span className="ml-2 text-sm text-gray-600">
-                        Confidence: {Math.round(approval.decision.confidence * 100)}%
-                      </span>
+                  <div className="space-y-4">
+                    {/* Email Details */}
+                    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 p-4 rounded-lg space-y-3">
+                      <h4 className="font-medium mb-3 flex items-center text-gray-900 dark:text-gray-100">
+                        <Mail className="h-4 w-4 mr-2 text-blue-600 dark:text-blue-400" />
+                        Email Details
+                      </h4>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                        <div className="flex items-center space-x-2">
+                          <AtSign className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                          <span className="font-medium text-gray-900 dark:text-gray-100">From:</span>
+                          <span className="text-gray-900 dark:text-gray-100 font-mono text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded border border-gray-300 dark:border-gray-600">
+                            {approval.item_data.from_email || approval.item_data.from || 'N/A'}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2">
+                          <User className="h-3 w-3 text-green-600 dark:text-green-400" />
+                          <span className="font-medium text-gray-900 dark:text-gray-100">To:</span>
+                          <span className="text-gray-900 dark:text-gray-100 font-mono text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded border border-gray-300 dark:border-gray-600">
+                            {approval.item_data.to_email || approval.item_data.to || 'N/A'}
+                          </span>
+                        </div>
+                        
+                        {(approval.item_data.cc_email || approval.item_data.cc) && (
+                          <div className="flex items-center space-x-2 md:col-span-2">
+                            <Users className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                            <span className="font-medium text-gray-900 dark:text-gray-100">CC:</span>
+                            <span className="text-gray-900 dark:text-gray-100 font-mono text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded border border-gray-300 dark:border-gray-600">
+                              {approval.item_data.cc_email || approval.item_data.cc}
+                            </span>
+                          </div>
+                        )}
+                        
+                        <div className="md:col-span-2">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <Mail className="h-3 w-3 text-orange-600 dark:text-orange-400" />
+                            <span className="font-medium text-gray-900 dark:text-gray-100">Subject:</span>
+                          </div>
+                          <p className="text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gray-700 p-3 rounded border border-gray-300 dark:border-gray-600 font-medium">
+                            {approval.item_data.subject || approval.item_data.email_subject || approval.item_data.title || 'No subject'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Email Content Toggle */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleApprovalExpansion(approval.id)}
+                        className="w-full mt-2"
+                      >
+                        {expandedApprovals.has(approval.id) ? (
+                          <>
+                            <ChevronUp className="h-4 w-4 mr-2" />
+                            Hide Email Content
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-4 w-4 mr-2" />
+                            Show Email Content
+                          </>
+                        )}
+                      </Button>
+                      
+                      {/* Expandable Email Content */}
+                      {expandedApprovals.has(approval.id) && (
+                        <div className="mt-3 border-t pt-3">
+                          <h5 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
+                            <Eye className="h-3 w-3 mr-2" />
+                            Email Content:
+                          </h5>
+                          <div className="bg-white dark:bg-gray-900 p-4 rounded border text-sm text-gray-900 dark:text-gray-100 max-h-60 overflow-y-auto border-gray-300 dark:border-gray-600">
+                            <pre className="whitespace-pre-wrap font-sans">
+                              {(() => {
+                                // First try to get plain text versions
+                                const plainTextContent = approval.item_data.plain_text || 
+                                                        approval.item_data.text_content || 
+                                                        approval.item_data.body_text
+                                
+                                if (plainTextContent) {
+                                  return plainTextContent
+                                }
+                                
+                                // If no plain text, convert HTML to plain text
+                                const htmlContent = approval.item_data.content || 
+                                                  approval.item_data.body || 
+                                                  approval.item_data.html_content ||
+                                                  approval.item_data.body_html
+                                
+                                if (htmlContent) {
+                                  return convertHtmlToPlainText(htmlContent)
+                                }
+                                
+                                // Fallback to preview or no content
+                                return approval.item_data.preview || 'No content available'
+                              })()}
+                            </pre>
+                          </div>
+                          
+                          {/* Debug: Available Fields */}
+                          <details className="mt-2">
+                            <summary className="text-xs text-gray-500 dark:text-gray-400 cursor-pointer">Debug: Available Fields</summary>
+                            <pre className="text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 p-2 rounded mt-1 overflow-auto border border-gray-300 dark:border-gray-600">
+                              {JSON.stringify(Object.keys(approval.item_data), null, 2)}
+                            </pre>
+                          </details>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <h4 className="font-medium mb-2">Reasoning:</h4>
-                      <p className="text-sm text-gray-600">{approval.decision.reasoning}</p>
-                    </div>
-                    {approval.item_data.subject && (
-                      <div>
-                        <h4 className="font-medium mb-2">Email Subject:</h4>
-                        <p className="text-sm">{approval.item_data.subject}</p>
+
+                    {/* Agent Decision or Draft Content */}
+                    {approval.item_type === 'email_draft' ? (
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
+                            <Bot className="h-4 w-4 mr-2 text-blue-600 dark:text-blue-400" />
+                            Draft Content:
+                          </h4>
+                          <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded border border-blue-200 dark:border-blue-700">
+                            <p className="text-sm text-gray-900 dark:text-gray-100 font-medium mb-2">
+                              Subject: {approval.item_data?.subject || 'No subject'}
+                            </p>
+                            <div className="text-sm text-gray-700 dark:text-gray-300 max-h-40 overflow-y-auto">
+                              {approval.item_data?.content || approval.item_data?.draft_content || 'No content'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="font-medium mb-2 flex items-center text-gray-900 dark:text-gray-100">
+                            <Bot className="h-4 w-4 mr-2 text-blue-600 dark:text-blue-400" />
+                            Proposed Action:
+                          </h4>
+                          <div className="flex items-center space-x-2">
+                            <Badge variant="outline" className="text-lg px-3 py-1">
+                              {approval.decision?.action || 'Unknown'}
+                            </Badge>
+                            <span className="text-sm text-gray-600">
+                              Confidence: {approval.decision?.confidence ? Math.round(approval.decision.confidence * 100) : 0}%
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Agent Reasoning:</h4>
+                          <p className="text-sm text-gray-900 dark:text-gray-100 bg-blue-50 dark:bg-blue-900/30 p-3 rounded border border-blue-200 dark:border-blue-700">
+                            {approval.decision?.reasoning || 'No reasoning provided'}
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -503,6 +773,139 @@ export function AgentMissionControl() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Feedback Dialog */}
+      <Dialog open={feedbackDialog.open} onOpenChange={(open) => 
+        setFeedbackDialog(prev => ({ ...prev, open }))
+      }>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {feedbackDialog.action === 'approve' ? 'Approve with Feedback' : 'Correct Agent Decision'}
+            </DialogTitle>
+            <DialogDescription>
+              Help the agent learn from your decision by providing feedback about what it should have done differently.
+            </DialogDescription>
+          </DialogHeader>
+
+          {feedbackDialog.approval && (
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                {feedbackDialog.approval.item_type === 'email_draft' ? (
+                  <>
+                    <h4 className="font-medium mb-2">Email Draft:</h4>
+                    <div className="mb-2">
+                      <Badge>Draft Review</Badge>
+                    </div>
+                    <p className="text-sm text-gray-600 font-medium">
+                      Subject: {feedbackDialog.approval.item_data?.subject || 'No subject'}
+                    </p>
+                    <div className="text-sm text-gray-600 mt-2 max-h-32 overflow-y-auto">
+                      {feedbackDialog.approval.item_data?.content || feedbackDialog.approval.item_data?.draft_content || 'No content'}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h4 className="font-medium mb-2">Agent's Original Decision:</h4>
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Badge>{feedbackDialog.approval.decision?.action || 'Unknown'}</Badge>
+                      <span className="text-sm text-gray-600">
+                        Confidence: {feedbackDialog.approval.decision?.confidence ? Math.round(feedbackDialog.approval.decision.confidence * 100) : 0}%
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">{feedbackDialog.approval.decision?.reasoning || 'No reasoning provided'}</p>
+                  </>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="reasoning">Why was this decision incorrect? *</Label>
+                  <Textarea
+                    id="reasoning"
+                    placeholder="Explain why the agent's decision was wrong and what factors it should have considered..."
+                    value={feedback.reasoning}
+                    onChange={(e) => setFeedback(prev => ({ ...prev, reasoning: e.target.value }))}
+                    className="min-h-[100px]"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="correctAction">What should the agent have done instead?</Label>
+                  <Select value={feedback.correctAction} onValueChange={(value) => 
+                    setFeedback(prev => ({ ...prev, correctAction: value }))
+                  }>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select the correct action..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="archive">Archive Email</SelectItem>
+                      <SelectItem value="reply">Generate Reply</SelectItem>
+                      <SelectItem value="flag_important">Flag as Important</SelectItem>
+                      <SelectItem value="schedule_followup">Schedule Follow-up</SelectItem>
+                      <SelectItem value="escalate">Escalate to Human</SelectItem>
+                      <SelectItem value="categorize">Categorize Differently</SelectItem>
+                      <SelectItem value="no_action">Take No Action</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {feedbackDialog.action === 'approve' && (
+                  <div>
+                    <Label htmlFor="confidence">How confident should the agent be in similar cases?</Label>
+                    <Select value={feedback.confidence} onValueChange={(value) => 
+                      setFeedback(prev => ({ ...prev, confidence: value }))
+                    }>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select confidence level..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low (0-40%) - Be more cautious</SelectItem>
+                        <SelectItem value="medium">Medium (40-70%) - Current level is good</SelectItem>
+                        <SelectItem value="high">High (70-90%) - Be more confident</SelectItem>
+                        <SelectItem value="very_high">Very High (90-100%) - Very confident</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg">
+                  <Brain className="h-5 w-5 text-blue-600" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium">Learning Impact</p>
+                    <p>This feedback will help the agent make better decisions in similar future scenarios.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="space-x-2">
+            <Button
+              variant="outline"
+              onClick={() => setFeedbackDialog({ open: false, approval: null, action: 'approve' })}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => handleApproval(true)}
+              disabled={!feedback.reasoning.trim()}
+            >
+              {feedbackDialog.action === 'approve' ? (
+                <>
+                  <ThumbsUp className="h-4 w-4 mr-2" />
+                  Approve & Learn
+                </>
+              ) : (
+                <>
+                  <ThumbsDown className="h-4 w-4 mr-2" />
+                  Reject & Teach
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

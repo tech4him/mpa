@@ -81,14 +81,19 @@ export async function POST(req: NextRequest) {
         encrypted_refresh_token: encryptedToken,
       })
       
-      // Create email account
+      // Upsert email account (insert or update if exists)
       const webhookSecret = crypto.randomBytes(32).toString('hex')
-      await supabase.from('email_accounts').insert({
-        user_id: authUser.user!.id,
-        email_address: graphUser.mail || graphUser.userPrincipalName,
-        webhook_secret: webhookSecret,
-        sync_status: 'pending',
-      })
+      await supabase
+        .from('email_accounts')
+        .upsert({
+          user_id: authUser.user!.id,
+          email_address: graphUser.mail || graphUser.userPrincipalName,
+          webhook_secret: webhookSecret,
+          sync_status: 'pending',
+        }, {
+          onConflict: 'user_id,email_address',
+          ignoreDuplicates: false
+        })
     }
     
     return NextResponse.json({ success: true })
