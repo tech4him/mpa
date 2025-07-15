@@ -367,7 +367,8 @@ export class MailboxManager {
           const messages = await this.graphClient
             .api(`/me/mailFolders/${folder.id}/messages`)
             .select('subject,body')
-            .top(8)
+            .top(20)  // Increased from 8 to get better understanding of folder content
+            .orderby('receivedDateTime desc')  // Get most recent messages
             .get()
           
           if (messages.value && messages.value.length > 0) {
@@ -620,7 +621,34 @@ export class MailboxManager {
     const body = (thread.email_messages?.[0]?.body || '').toLowerCase()
     const fullText = `${subject} ${body}`.substring(0, 1000)
     
-    // First, try to use extracted business entities
+    // Check for common business contexts FIRST with better pattern matching
+    const businessPatterns = [
+      { pattern: /\b(?:laptop|macbook|computer|equipment|setup|onboard|new\s+employee)\b/i, folder: 'IT & Onboarding' },
+      { pattern: /\b(?:biblionexus|nexus|platform|migration|transition)\b/i, folder: 'Platform Migration' },
+      { pattern: /\b(?:board|governance|executive|strategic|leadership)\b/i, folder: 'Leadership' },
+      { pattern: /\b(?:budget|financial|expense|invoice|payment|accounting|revenue|cost)\b/i, folder: 'Finance' },
+      { pattern: /\b(?:donor|fundraising|grant|development|partnership|sponsor)\b/i, folder: 'Development' },
+      { pattern: /\b(?:meeting|conference|call|agenda|minutes|schedule|appointment)\b/i, folder: 'Meetings' },
+      { pattern: /\b(?:contract|agreement|legal|compliance|policy|terms)\b/i, folder: 'Legal & Compliance' },
+      { pattern: /\b(?:marketing|campaign|promotion|advertisement|brand|social)\b/i, folder: 'Marketing' },
+      { pattern: /\b(?:hr|human\s+resources|benefits|vacation|leave|payroll|staff)\b/i, folder: 'Human Resources' },
+      { pattern: /\b(?:training|education|learning|workshop|course|certification)\b/i, folder: 'Training & Education' },
+      { pattern: /\b(?:security|safety|incident|breach|vulnerability|audit|advisor)\b/i, folder: 'Security' },
+      { pattern: /\b(?:operations|workflow|process|procedure|efficiency|optimization)\b/i, folder: 'Operations' },
+      { pattern: /\b(?:software|system|application|platform|technology|digital|supabase|database)\b/i, folder: 'Technology' },
+      { pattern: /\b(?:customer|support|help|assistance|service|ticket)\b/i, folder: 'Customer Support' },
+      { pattern: /\b(?:report|summary|analytics|metrics|data|dashboard)\b/i, folder: 'Reports & Analytics' },
+      { pattern: /\b(?:proposal|pitch|presentation|deck|rfp)\b/i, folder: 'Proposals' },
+      { pattern: /\b(?:event|conference|webinar|workshop|seminar)\b/i, folder: 'Events' }
+    ]
+    
+    for (const { pattern, folder } of businessPatterns) {
+      if (pattern.test(fullText)) {
+        return folder
+      }
+    }
+    
+    // Then try to use extracted business entities
     const entities = this.extractBusinessEntities(thread)
     
     if (entities.projects.length > 0) {
@@ -643,47 +671,17 @@ export class MailboxManager {
       return `Vendor: ${entities.vendors[0]}`
     }
     
-    // Extract meaningful topic from subject line
-    const topicFromSubject = this.extractTopicFromSubject(thread.subject)
-    if (topicFromSubject) {
-      return topicFromSubject
-    }
-    
-    // Check for common business contexts with better pattern matching
-    const businessPatterns = [
-      { pattern: /\b(?:laptop|macbook|computer|equipment|setup|onboard|new\s+employee)\b/i, folder: 'IT & Onboarding' },
-      { pattern: /\b(?:biblionexus|nexus|platform|migration|transition)\b/i, folder: 'Platform Migration' },
-      { pattern: /\b(?:board|governance|executive|strategic|leadership)\b/i, folder: 'Leadership' },
-      { pattern: /\b(?:budget|financial|expense|invoice|payment|accounting|revenue|cost)\b/i, folder: 'Finance' },
-      { pattern: /\b(?:donor|fundraising|grant|development|partnership|sponsor)\b/i, folder: 'Development' },
-      { pattern: /\b(?:meeting|conference|call|agenda|minutes|schedule|appointment)\b/i, folder: 'Meetings' },
-      { pattern: /\b(?:contract|agreement|legal|compliance|policy|terms)\b/i, folder: 'Legal & Compliance' },
-      { pattern: /\b(?:marketing|campaign|promotion|advertisement|brand|social)\b/i, folder: 'Marketing' },
-      { pattern: /\b(?:hr|human\s+resources|benefits|vacation|leave|payroll|staff)\b/i, folder: 'Human Resources' },
-      { pattern: /\b(?:training|education|learning|workshop|course|certification)\b/i, folder: 'Training & Education' },
-      { pattern: /\b(?:security|safety|incident|breach|vulnerability|audit)\b/i, folder: 'Security' },
-      { pattern: /\b(?:operations|workflow|process|procedure|efficiency|optimization)\b/i, folder: 'Operations' },
-      { pattern: /\b(?:software|system|application|platform|technology|digital)\b/i, folder: 'Technology' },
-      { pattern: /\b(?:customer|support|help|assistance|service|ticket)\b/i, folder: 'Customer Support' }
-    ]
-    
-    for (const { pattern, folder } of businessPatterns) {
-      if (pattern.test(fullText)) {
-        return folder
-      }
-    }
-    
     // Try to extract organization/company names from participants
     const organizationName = this.extractOrganizationFromParticipants(thread.participants)
     if (organizationName) {
       return `${organizationName} Communications`
     }
     
-    // Try to extract meaningful words from subject and create descriptive folder
-    const meaningfulTopic = this.extractMeaningfulTopic(thread.subject)
-    if (meaningfulTopic) {
-      return meaningfulTopic
-    }
+    // Skip extractMeaningfulTopic to avoid creating subject-based folders
+    // const meaningfulTopic = this.extractMeaningfulTopic(thread.subject)
+    // if (meaningfulTopic) {
+    //   return meaningfulTopic
+    // }
     
     // Use sender domain as last meaningful resort
     const senderDomain = this.extractSenderDomain(thread)
