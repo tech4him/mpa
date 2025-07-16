@@ -150,109 +150,104 @@ export class AIFolderCategorizer {
     const { subject, from, body, date } = emailContext
     
     return `
-Analyze this email and categorize it for intelligent folder organization:
+You are an expert email categorization system for an executive's inbox management. Your goal is to create an intelligent, workable folder structure that helps the executive quickly find and organize emails by business purpose and context.
 
+EMAIL TO ANALYZE:
 SUBJECT: ${subject}
 FROM: ${from}
 DATE: ${date.toISOString()}
 BODY: ${body.substring(0, 1000)}
 
-CATEGORIZATION RULES:
-1. Choose ONE primary category from: ${this.parameters.allowed_categories.join(', ')}
-2. Identify specific client/project/vendor if applicable
-3. Maximum folder depth: ${this.parameters.max_depth} levels
-4. Known clients: ${this.parameters.client_patterns.join(', ')}
-5. Known projects: ${this.parameters.project_patterns.join(', ')}
-6. Known vendors: ${this.parameters.vendor_patterns.join(', ')}
+EXECUTIVE CONTEXT:
+You are organizing emails for a senior executive who needs to:
+- Quickly locate emails by business function and context
+- Track activities across different areas of responsibility
+- Maintain organized records for follow-up and reference
+- Balance detailed organization with practical usability
 
-SPECIAL HANDLING:
-- Finance emails: Extract fiscal year if mentioned (FY24, FY25, etc.)
-- Technology emails: Identify if from known vendor or general tech
-- Project emails: Match to known projects or create "Projects/[ProjectName]"
-- Vendor emails: Match to known vendors or create "Vendors/[VendorName]"
-- HR emails: Extract employee/person names for Personnel subfolders
-- Legal emails: Extract case/contract names for specific subfolders
+ORGANIZATIONAL PHILOSOPHY:
+- Content and business purpose should drive folder structure
+- Group related activities together regardless of communication tool
+- Personnel matters belong in HR, financial matters in Finance, etc.
+- Vendors and tools are secondary to the business purpose
+- Create person-specific subfolders for ongoing relationships and activities
+
+AVAILABLE CATEGORIES: ${this.parameters.allowed_categories.join(', ')}
+MAXIMUM FOLDER DEPTH: ${this.parameters.max_depth} levels
+KNOWN ENTITIES:
+- Clients: ${this.parameters.client_patterns.join(', ')}
+- Projects: ${this.parameters.project_patterns.join(', ')}
+- Vendors: ${this.parameters.vendor_patterns.join(', ')}
+
+DECISION FRAMEWORK:
+1. What is the PRIMARY business purpose of this email?
+2. Is this about a specific person, project, or client relationship?
+3. Does this need to be easily findable within a functional area?
+4. How would an executive naturally look for this email later?
+
+EXAMPLES OF GOOD CATEGORIZATION:
+- Performance review meeting notes → HR/Personnel/[EmployeeName] (business purpose: HR, context: specific person)
+- Budget planning email → Finance/Budget/[FiscalYear] (business purpose: Finance, context: planning cycle)
+- Project status update → Projects/[ProjectName] (business purpose: project management)
+- Vendor alert from tool → Technology/[VendorName] (business purpose: technology, context: vendor)
 
 RESPONSE FORMAT (JSON only):
 {
-  "category": "primary category",
-  "subcategory": "Personnel for HR, Budget for Finance, etc.",
-  "client": "client name if identified",
-  "project": "project name if identified", 
-  "vendor": "vendor name if identified",
-  "person": "employee/person name for HR emails",
+  "category": "primary business category",
+  "subcategory": "functional area like Personnel, Budget, Contracts",
+  "entity": "specific person, project, client, or vendor name",
+  "entity_type": "person|project|client|vendor",
   "confidence": 0.95,
-  "reasoning": "brief explanation of categorization",
-  "fiscal_year": "FY25 if applicable"
+  "reasoning": "explain why this categorization serves the executive's needs",
+  "fiscal_year": "FY25 if applicable to financial matters"
 }
 
-FOLDER PATH EXAMPLES:
-- Budget email about FY25 → Finance/Budget/FY25
-- Zoom network alert → Technology/Zoom
-- BiblioNexus project email → Projects/BiblioNexus
-- CorpTek support → Vendors/CorpTek
-- Julie Riggs performance review → HR/Personnel/JulieRiggs
-- General HR email → HR/General
-- Legal contract review → Legal/Contracts
-- Board meeting notes → Governance/Board
-
-Analyze and respond with JSON only:
+Think about the executive's needs and business context, then respond with JSON only:
 `
   }
 
   private buildFolderPath(result: any): string {
-    const { category, subcategory, client, project, vendor, person, fiscal_year } = result
+    const { category, subcategory, entity, entity_type, fiscal_year } = result
     
+    // Start with the primary business category
     let path = category
     
-    // Content-focused categories should prioritize the category over vendor/client
-    const contentFocusedCategories = ['HR', 'Legal', 'Finance', 'Governance', 'Operations']
-    
-    if (contentFocusedCategories.includes(category)) {
-      // For content-focused categories, use category as primary structure
-      if (subcategory) {
-        path = `${category}/${subcategory}`
-      } else {
-        path = `${category}/General`
-      }
-      
-      // Add person-specific subfolder for HR (Personnel/JohnDoe)
-      if (person && category === 'HR' && this.parameters.special_rules.client_specific_folders) {
-        path = `${path}/${this.normalizeEntityName(person)}`
-      }
-      // Add entity-specific subfolder for other content categories
-      else if (client && this.parameters.special_rules.client_specific_folders) {
-        path = `${path}/${this.normalizeEntityName(client)}`
-      }
-    } else {
-      // For other categories, prioritize specific entity types
-      if (vendor && this.parameters.special_rules.client_specific_folders) {
-        path = `Vendors/${this.normalizeEntityName(vendor)}`
-      } else if (project && this.parameters.special_rules.project_specific_folders) {
-        path = `Projects/${this.normalizeEntityName(project)}`
-      } else if (client && this.parameters.special_rules.client_specific_folders) {
-        path = `Clients/${this.normalizeEntityName(client)}`
-      } else if (subcategory) {
-        path = `${category}/${subcategory}`
-      } else {
-        path = `${category}/General`
-      }
+    // Add subcategory if provided (functional area)
+    if (subcategory) {
+      path = `${category}/${subcategory}`
     }
     
-    // Add fiscal year handling
+    // Add entity-specific folder if provided and rules allow
+    if (entity && this.shouldCreateEntityFolder(entity_type)) {
+      path = `${path}/${this.normalizeEntityName(entity)}`
+    }
+    
+    // Add fiscal year for financial matters
     if (fiscal_year && this.parameters.special_rules.fiscal_year_handling) {
-      if (category === 'Finance') {
-        path = `${path}/${fiscal_year}`
-      }
+      path = `${path}/${fiscal_year}`
     }
     
-    // Ensure max depth
+    // Ensure we don't exceed max depth
     const pathParts = path.split('/')
     if (pathParts.length > this.parameters.max_depth) {
       path = pathParts.slice(0, this.parameters.max_depth).join('/')
     }
     
     return path
+  }
+
+  private shouldCreateEntityFolder(entityType: string): boolean {
+    switch (entityType) {
+      case 'person':
+      case 'client':
+        return this.parameters.special_rules.client_specific_folders
+      case 'project':
+        return this.parameters.special_rules.project_specific_folders
+      case 'vendor':
+        return this.parameters.special_rules.client_specific_folders
+      default:
+        return false
+    }
   }
 
   private normalizeEntityName(name: string): string {
@@ -265,29 +260,13 @@ Analyze and respond with JSON only:
   }
 
   private getFallbackCategory(emailContext: EmailContext): CategoryResult {
-    const { subject, from } = emailContext
-    
-    // Simple fallback logic
-    let category = 'General'
-    let folder_path = 'Archive/General'
-    
-    if (from.includes('corptek')) {
-      category = 'Technology'
-      folder_path = 'Vendors/CorpTek'
-    } else if (subject.toLowerCase().includes('budget') || subject.toLowerCase().includes('fiscal')) {
-      category = 'Finance'
-      folder_path = 'Finance/Budget'
-    } else if (subject.toLowerCase().includes('review') || subject.toLowerCase().includes('performance') || 
-               subject.toLowerCase().includes('hr') || subject.toLowerCase().includes('personnel')) {
-      category = 'HR'
-      folder_path = 'HR/Personnel'
-    }
-    
+    // Simple fallback when AI fails - default to general archive
     return {
-      category,
-      confidence: 0.3,
-      reasoning: 'Fallback categorization due to AI failure',
-      folder_path
+      category: 'Operations',
+      subcategory: 'General',
+      confidence: 0.1,
+      reasoning: 'AI categorization failed - defaulting to Operations/General for manual review',
+      folder_path: 'Operations/General'
     }
   }
 
