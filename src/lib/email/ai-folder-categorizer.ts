@@ -170,14 +170,17 @@ SPECIAL HANDLING:
 - Technology emails: Identify if from known vendor or general tech
 - Project emails: Match to known projects or create "Projects/[ProjectName]"
 - Vendor emails: Match to known vendors or create "Vendors/[VendorName]"
+- HR emails: Extract employee/person names for Personnel subfolders
+- Legal emails: Extract case/contract names for specific subfolders
 
 RESPONSE FORMAT (JSON only):
 {
   "category": "primary category",
-  "subcategory": "optional subcategory",
+  "subcategory": "Personnel for HR, Budget for Finance, etc.",
   "client": "client name if identified",
   "project": "project name if identified", 
   "vendor": "vendor name if identified",
+  "person": "employee/person name for HR emails",
   "confidence": 0.95,
   "reasoning": "brief explanation of categorization",
   "fiscal_year": "FY25 if applicable"
@@ -188,28 +191,52 @@ FOLDER PATH EXAMPLES:
 - Zoom network alert → Technology/Zoom
 - BiblioNexus project email → Projects/BiblioNexus
 - CorpTek support → Vendors/CorpTek
+- Julie Riggs performance review → HR/Personnel/JulieRiggs
 - General HR email → HR/General
+- Legal contract review → Legal/Contracts
+- Board meeting notes → Governance/Board
 
 Analyze and respond with JSON only:
 `
   }
 
   private buildFolderPath(result: any): string {
-    const { category, subcategory, client, project, vendor, fiscal_year } = result
+    const { category, subcategory, client, project, vendor, person, fiscal_year } = result
     
     let path = category
     
-    // Handle specific entity types
-    if (vendor && this.parameters.special_rules.client_specific_folders) {
-      path = `Vendors/${this.normalizeEntityName(vendor)}`
-    } else if (project && this.parameters.special_rules.project_specific_folders) {
-      path = `Projects/${this.normalizeEntityName(project)}`
-    } else if (client && this.parameters.special_rules.client_specific_folders) {
-      path = `Clients/${this.normalizeEntityName(client)}`
-    } else if (subcategory) {
-      path = `${category}/${subcategory}`
+    // Content-focused categories should prioritize the category over vendor/client
+    const contentFocusedCategories = ['HR', 'Legal', 'Finance', 'Governance', 'Operations']
+    
+    if (contentFocusedCategories.includes(category)) {
+      // For content-focused categories, use category as primary structure
+      if (subcategory) {
+        path = `${category}/${subcategory}`
+      } else {
+        path = `${category}/General`
+      }
+      
+      // Add person-specific subfolder for HR (Personnel/JohnDoe)
+      if (person && category === 'HR' && this.parameters.special_rules.client_specific_folders) {
+        path = `${path}/${this.normalizeEntityName(person)}`
+      }
+      // Add entity-specific subfolder for other content categories
+      else if (client && this.parameters.special_rules.client_specific_folders) {
+        path = `${path}/${this.normalizeEntityName(client)}`
+      }
     } else {
-      path = `${category}/General`
+      // For other categories, prioritize specific entity types
+      if (vendor && this.parameters.special_rules.client_specific_folders) {
+        path = `Vendors/${this.normalizeEntityName(vendor)}`
+      } else if (project && this.parameters.special_rules.project_specific_folders) {
+        path = `Projects/${this.normalizeEntityName(project)}`
+      } else if (client && this.parameters.special_rules.client_specific_folders) {
+        path = `Clients/${this.normalizeEntityName(client)}`
+      } else if (subcategory) {
+        path = `${category}/${subcategory}`
+      } else {
+        path = `${category}/General`
+      }
     }
     
     // Add fiscal year handling
@@ -250,6 +277,10 @@ Analyze and respond with JSON only:
     } else if (subject.toLowerCase().includes('budget') || subject.toLowerCase().includes('fiscal')) {
       category = 'Finance'
       folder_path = 'Finance/Budget'
+    } else if (subject.toLowerCase().includes('review') || subject.toLowerCase().includes('performance') || 
+               subject.toLowerCase().includes('hr') || subject.toLowerCase().includes('personnel')) {
+      category = 'HR'
+      folder_path = 'HR/Personnel'
     }
     
     return {
