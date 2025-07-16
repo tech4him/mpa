@@ -232,7 +232,7 @@ AVAILABLE CATEGORIES: ${this.parameters.allowed_categories.join(', ')}, Security
 MAXIMUM FOLDER DEPTH: ${this.parameters.max_depth} levels
 
 COMMON FUNCTIONAL SUBCATEGORIES:
-- HR: Personnel (individual actions), Onboarding, Policies, Training, Benefits, Recruiting
+- HR: Personnel (individual actions), Onboarding, Policies, Training, Benefits, Recruiting, Compensation, Operations
 - Finance: Budget, Expenses, Revenue, Payroll, Audit, Planning
 - Legal: Contracts, Compliance, Litigation, Policies, Intellectual Property
 - Operations: General, Planning, Facilities, Vendors, Procedures
@@ -261,17 +261,25 @@ SECURITY EMAIL PRIORITY:
 - These are relationship management activities, not general operations
 
 ENTITY EXTRACTION GUIDELINES:
-- Extract person names for individual relationship activities: 1-on-1s, performance reviews, disciplinary actions, individual development
-- Do NOT extract person names for general processes (onboarding, policy updates, team communications)
+- Extract person names ONLY for direct individual actions: 1-on-1s with that person, their performance review, their disciplinary action
+- Do NOT extract person names from meeting topics, discussions, or when they are mentioned in passing
+- Executive meetings about topics (compensation, policies) should use topic-based subcategories, not person names
 - For 1-on-1 meetings: ALWAYS extract the person's name for proper filing
 - Project names should be extracted ONLY for project-specific communications where the project is clearly identified
 - Client names for client-specific work or relationships
 - If no specific entity is clearly identified, set entity to null - do NOT guess or use fallback values
 - NEVER extract entity names from the known patterns list unless they are explicitly mentioned in the email
 
+MEETING TYPE DISTINCTION:
+- Individual meeting WITH person → extract person name (1-on-1 with John → HR/Personnel/John)
+- Executive meeting ABOUT topic → use topic subcategory (compensation meeting → HR/Compensation)
+- If people are mentioned IN the meeting but it's not ABOUT them specifically, do not extract person names
+
 EXAMPLES OF GOOD CATEGORIZATION:
-- Performance review meeting notes → HR/Personnel/[EmployeeName] (direct individual action)
-- 1-on-1 meeting agenda with Andrew → HR/Personnel/Andrew (relationship management, internal staff)
+- Performance review meeting FOR John → HR/Personnel/John (direct individual action)
+- 1-on-1 meeting agenda WITH Andrew → HR/Personnel/Andrew (relationship management, internal staff)
+- Compensation meeting discussing policy → HR/Compensation (executive topic meeting, not about individual)
+- Executive team meeting about HR operations → HR/Operations (executive operational meeting)
 - 1-on-1 meeting notes with external partner → Partnerships/[PartnerName] (external relationship)
 - New staff onboarding from BiblioNexus → HR/Onboarding (staff transition process)
 - Staff names/email setup for new hires → HR/Onboarding (onboarding logistics)
