@@ -19,20 +19,10 @@ export class MailboxActions {
 
   static async forUser(userId: string): Promise<MailboxActions | null> {
     try {
-      const supabase = await createClient(true) // Service role
+      // Use the proper token refresh mechanism from microsoft-graph/client
+      const { getValidTokenForUser } = await import('./client')
       
-      // Get user's encrypted access token
-      const { data: account } = await supabase
-        .from('email_accounts')
-        .select('encrypted_access_token')
-        .eq('user_id', userId)
-        .single()
-
-      if (!account?.encrypted_access_token) {
-        return null
-      }
-
-      const accessToken = await decryptAccessToken(account.encrypted_access_token)
+      const accessToken = await getValidTokenForUser(userId, ['User.Read', 'Mail.ReadWrite'])
       return new MailboxActions(accessToken, userId)
     } catch (error) {
       console.error('Failed to create MailboxActions:', error)
@@ -255,6 +245,11 @@ export class MailboxActions {
         })
 
         if (!searchResponse.ok) {
+          // Handle token expiration
+          if (searchResponse.status === 401) {
+            console.error('Token expired during folder search. User needs to re-authenticate.')
+            throw new Error('Authentication token expired. Please sign in again.')
+          }
           throw new Error(`Search failed: ${searchResponse.statusText}`)
         }
 
@@ -282,6 +277,11 @@ export class MailboxActions {
           })
 
           if (!createResponse.ok) {
+            // Handle token expiration
+            if (createResponse.status === 401) {
+              console.error('Token expired during folder creation. User needs to re-authenticate.')
+              throw new Error('Authentication token expired. Please sign in again.')
+            }
             throw new Error(`Create folder failed: ${createResponse.statusText}`)
           }
 

@@ -156,7 +156,7 @@ EMAIL TO ANALYZE:
 SUBJECT: ${subject}
 FROM: ${from}
 DATE: ${date.toISOString()}
-BODY: ${body.substring(0, 1000)}
+BODY: ${body.substring(0, 2500)}
 
 EXECUTIVE CONTEXT:
 You are organizing emails for a senior executive who needs to:
@@ -202,11 +202,12 @@ ENTITY EXTRACTION GUIDELINES:
 
 EXAMPLES OF GOOD CATEGORIZATION:
 - Performance review meeting notes → HR/Personnel/[EmployeeName] (direct individual action)
-- New staff onboarding process → HR/Onboarding (general process, not person-specific)
+- New staff onboarding from BiblioNexus → HR/Onboarding (staff transition process)
+- Staff names/email setup for new hires → HR/Onboarding (onboarding logistics)
 - Budget planning email → Finance/Budget/[FiscalYear] (business purpose: Finance, context: planning cycle)
 - Project status update → Projects/[ProjectName] (business purpose: project management)
 - Vendor alert from tool → Technology/[VendorName] (business purpose: technology, context: vendor)
-- Employee handbook update → HR/Policies (general process)
+- Employee handbook update → HR/Policies (policy changes)
 - John's disciplinary action → HR/Personnel/John (direct individual action)
 
 RESPONSE FORMAT (JSON only):
