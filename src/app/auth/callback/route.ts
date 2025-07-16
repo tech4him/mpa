@@ -247,7 +247,7 @@ export async function GET(req: NextRequest) {
       console.log('Email account upserted successfully')
     }
 
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard`)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/inbox-zero`)
   } catch (error) {
     console.error('Auth callback error:', error)
     return NextResponse.redirect(

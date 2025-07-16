@@ -1,7 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { getGraphClient, getValidTokenForUser } from '@/lib/microsoft-graph/client'
-import { VectorStoreService } from '@/lib/vector-store/service'
-import { EmailClassificationProcessor } from '@/lib/agents/email-classifier'
 import crypto from 'crypto'
 
 interface EmailMessage {
@@ -63,12 +61,8 @@ interface EmailThread {
 }
 
 export class EmailSyncService {
-  private vectorStoreService: VectorStoreService
-  private classificationProcessor: EmailClassificationProcessor
-
   constructor() {
-    this.vectorStoreService = new VectorStoreService()
-    this.classificationProcessor = new EmailClassificationProcessor()
+    // Streamlined for inbox zero - no automatic AI processing
   }
 
   private async getSupabase() {

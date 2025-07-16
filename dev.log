@@ -1,0 +1,19 @@
+
+> mpa@0.1.0 dev
+> next dev --turbopack
+
+   ▲ Next.js 15.3.5 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://10.255.255.254:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 4.4s
+ ○ Compiling /inbox-zero ...
+ ✓ Compiled /inbox-zero in 15s
+ GET /inbox-zero 200 in 17938ms
+ ○ Compiling /favicon.ico ...
+ GET /favicon.ico?favicon.45db1c09.ico 200 in 4759ms
+ ✓ Compiled /favicon.ico in 5.9s
+ GET /auth/login 200 in 5558ms
+[?25h
