@@ -163,17 +163,17 @@ export class AIFolderCategorizer {
       // Get relevant organizational context from vector store
       let vectorContext = ''
       try {
-        const { VectorStoreService } = await import('../vector-store/vector-store-service')
+        const { VectorStoreService } = await import('../vector-store/service')
         const vectorStore = new VectorStoreService()
         
         // Search for relevant organizational knowledge
         const searchQuery = `${emailContext.subject} ${emailContext.from} ${emailContext.body.substring(0, 500)}`
-        const searchResults = await vectorStore.searchUserVectorStore(this.userId, searchQuery, 3)
+        const searchResults = await vectorStore.searchVectorStore(searchQuery, 3)
         
         if (searchResults.length > 0) {
           vectorContext = `
 ORGANIZATIONAL CONTEXT (from previous emails and documents):
-${searchResults.map(result => `- ${result.snippet}`).join('\n')}
+${searchResults.map(result => `- ${result.content}`).join('\n')}
 `
         }
       } catch (error) {
