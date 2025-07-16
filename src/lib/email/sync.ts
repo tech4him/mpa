@@ -61,8 +61,27 @@ interface EmailThread {
 }
 
 export class EmailSyncService {
+  private vectorStoreService: any
+  private classificationProcessor: any
+
   constructor() {
-    // Streamlined for inbox zero - no automatic AI processing
+    // Initialize services for vector store and classification
+    // These are important for draft generation and future briefings
+    this.initializeServices()
+  }
+
+  private async initializeServices() {
+    try {
+      // Lazy load services to avoid circular dependencies
+      const { VectorStoreService } = await import('../vector-store/vector-store-service')
+      const { EmailClassificationProcessor } = await import('../ai/email-classification')
+      
+      this.vectorStoreService = new VectorStoreService()
+      this.classificationProcessor = new EmailClassificationProcessor()
+    } catch (error) {
+      console.error('Failed to initialize AI services:', error)
+      // Continue without these services - sync should still work
+    }
   }
 
   private async getSupabase() {
@@ -72,6 +91,11 @@ export class EmailSyncService {
   async syncUserEmails(userId: string) {
     try {
       const supabase = await this.getSupabase()
+      
+      // Ensure services are initialized
+      if (!this.vectorStoreService || !this.classificationProcessor) {
+        await this.initializeServices()
+      }
       
       // Get user info
       const { data: user } = await supabase
@@ -622,6 +646,12 @@ export class EmailSyncService {
     classification: any
   ) {
     try {
+      // If vector store service not available, skip upload
+      if (!this.vectorStoreService) {
+        console.log(`⏩ Skipping vector store upload for ${message.id} - service not available`)
+        return
+      }
+
       const category = this.categorizeEmail(message)
       const priority = this.determinePriority(message) === 1 ? 'high' : 'medium'
       
@@ -663,6 +693,19 @@ export class EmailSyncService {
     userId: string
   ): Promise<any> {
     try {
+      // If classification processor not available, return default
+      if (!this.classificationProcessor) {
+        return {
+          isRelevant: true,
+          category: 'BUSINESS_RELEVANT',
+          businessContext: 'EXTERNAL',
+          shouldIndex: true,
+          shouldArchive: false,
+          reasoning: 'Classification service not available',
+          confidence: 0.5,
+        };
+      }
+
       const emailContext = {
         id: message.id,
         subject: message.subject || '',
