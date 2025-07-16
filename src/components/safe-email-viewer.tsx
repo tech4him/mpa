@@ -12,13 +12,37 @@ interface SafeEmailViewerProps {
   body: string
   contentType?: string
   className?: string
+  toRecipients?: string[]
+  ccRecipients?: string[]
+  bccRecipients?: string[]
+  userEmail?: string
+  fromName?: string
+  fromEmail?: string
 }
 
-export function SafeEmailViewer({ subject, body, contentType = 'text/html', className = '' }: SafeEmailViewerProps) {
+export function SafeEmailViewer({ subject, body, contentType = 'text/html', className = '', toRecipients, ccRecipients, bccRecipients, userEmail, fromName, fromEmail }: SafeEmailViewerProps) {
   const [viewMode, setViewMode] = useState<'safe' | 'plain' | 'raw'>('safe')
   const [sanitizedHtml, setSanitizedHtml] = useState('')
   const [plainText, setPlainText] = useState('')
   const [hasUnsafeContent, setHasUnsafeContent] = useState(false)
+
+  // Utility function to highlight user's email
+  const highlightUserEmail = (recipients: string[]) => {
+    if (!userEmail) return recipients.join(', ')
+    
+    return recipients.map(recipient => {
+      const isUserEmail = recipient.toLowerCase().includes(userEmail.toLowerCase())
+      return isUserEmail ? (
+        <span key={recipient} className="font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1 py-0.5 rounded">
+          {recipient}
+        </span>
+      ) : (
+        <span key={recipient}>{recipient}</span>
+      )
+    }).reduce((prev, curr, index) => {
+      return index === 0 ? [curr] : [...prev, ', ', curr]
+    }, [] as React.ReactNode[])
+  }
 
   useEffect(() => {
     // Configure DOMPurify for maximum safety
@@ -158,6 +182,37 @@ export function SafeEmailViewer({ subject, body, contentType = 'text/html', clas
         </div>
       </CardHeader>
       <CardContent>
+        {/* Sender and Recipient Information */}
+        {(fromName || fromEmail || toRecipients || ccRecipients || bccRecipients) && (
+          <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="space-y-1">
+              {(fromName || fromEmail) && (
+                <div className="text-xs text-gray-700 dark:text-gray-300">
+                  <span className="font-medium">From:</span> {fromName || fromEmail || 'Unknown'}
+                  {fromEmail && fromName && (
+                    <span className="text-gray-600 dark:text-gray-400"> ({fromEmail})</span>
+                  )}
+                </div>
+              )}
+              {toRecipients && toRecipients.length > 0 && (
+                <div className="text-xs text-gray-700 dark:text-gray-300">
+                  <span className="font-medium">To:</span> {highlightUserEmail(toRecipients)}
+                </div>
+              )}
+              {ccRecipients && ccRecipients.length > 0 && (
+                <div className="text-xs text-gray-700 dark:text-gray-300">
+                  <span className="font-medium">CC:</span> {highlightUserEmail(ccRecipients)}
+                </div>
+              )}
+              {bccRecipients && bccRecipients.length > 0 && (
+                <div className="text-xs text-gray-700 dark:text-gray-300">
+                  <span className="font-medium">BCC:</span> {highlightUserEmail(bccRecipients)}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {hasUnsafeContent && (
           <Alert className="mb-4 border-orange-200 bg-orange-50 text-orange-900 dark:bg-orange-900/20 dark:border-orange-800 dark:text-orange-100">
             <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />

@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       .from('email_threads')
       .select(`
         *,
-        email_messages!inner (
+        email_messages (
           message_id
         )
       `)
@@ -33,19 +33,25 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .single()
 
-    if (!thread || !thread.email_messages[0]?.message_id) {
-      return NextResponse.json({ error: 'Email not found' }, { status: 404 })
+    if (!thread) {
+      return NextResponse.json({ error: 'Email thread not found' }, { status: 404 })
     }
 
-    // Perform actual mailbox snooze
-    const mailboxActions = await MailboxActions.forUser(user.id)
-    if (mailboxActions) {
-      const snoozeDate = new Date(defer_until)
-      const result = await mailboxActions.snoozeEmail(thread.email_messages[0].message_id, snoozeDate)
-      if (!result.success) {
-        console.error('Failed to snooze in mailbox:', result.error)
-        // Continue with DB update even if mailbox action fails
+    // Only try to snooze in mailbox if we have a message_id
+    const latestMessage = thread.email_messages?.[0]
+    if (latestMessage?.message_id) {
+      // Perform actual mailbox snooze
+      const mailboxActions = await MailboxActions.forUser(user.id)
+      if (mailboxActions) {
+        const snoozeDate = new Date(defer_until)
+        const result = await mailboxActions.snoozeEmail(latestMessage.message_id, snoozeDate)
+        if (!result.success) {
+          console.error('Failed to snooze in mailbox:', result.error)
+          // Continue with DB update even if mailbox action fails
+        }
       }
+    } else {
+      console.log(`⏰ No message_id found for thread ${email_id}, only updating database`)
     }
 
     // Create a deferred email record
@@ -104,7 +110,7 @@ export async function GET(request: NextRequest) {
       .from('deferred_emails')
       .select(`
         *,
-        email_threads!inner (
+        email_threads (
           id,
           subject,
           last_message_at,

@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       .from('email_threads')
       .select(`
         *,
-        email_messages!inner (
+        email_messages (
           id,
           subject,
           from_email,
@@ -39,7 +39,17 @@ export async function GET(request: NextRequest) {
     // Add AI analysis for each email
     const emailsWithAnalysis = await Promise.all(
       threads.map(async (thread) => {
-        const latestMessage = thread.email_messages[0]
+        // Handle threads without messages
+        const latestMessage = thread.email_messages?.[0] || {
+          id: thread.id,
+          subject: thread.subject || 'No Subject',
+          from_email: thread.from_email || 'unknown@email.com',
+          to_recipients: [],
+          received_at: thread.last_message_date || new Date().toISOString(),
+          body: '',
+          is_archived: false,
+          is_deleted: false
+        }
         
         // Estimate time to process (simple heuristic)
         const wordCount = latestMessage.body?.split(' ').length || 0

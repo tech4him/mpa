@@ -37,5 +37,5 @@ export default async function ThreadDetailPage({
     .is('is_deleted', false)
     .order('received_at', { ascending: false })
 
-  return <ThreadDetailView thread={thread} messages={messages || []} />
+  return <ThreadDetailView thread={thread} messages={messages || []} userEmail={user.email} />
 }

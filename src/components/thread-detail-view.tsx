@@ -60,14 +60,33 @@ interface EmailThread {
 interface ThreadDetailViewProps {
   thread: EmailThread
   messages: EmailMessage[]
+  userEmail?: string
 }
 
-export function ThreadDetailView({ thread, messages }: ThreadDetailViewProps) {
+export function ThreadDetailView({ thread, messages, userEmail }: ThreadDetailViewProps) {
   const [isMarking, setIsMarking] = useState(false)
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
   const [isProcessing, setIsProcessing] = useState(false)
   const [showRuleDialog, setShowRuleDialog] = useState(false)
   const router = useRouter()
+
+  // Utility function to highlight user's email
+  const highlightUserEmail = (recipients: string[]) => {
+    if (!userEmail) return recipients.join(', ')
+    
+    return recipients.map(recipient => {
+      const isUserEmail = recipient.toLowerCase().includes(userEmail.toLowerCase())
+      return isUserEmail ? (
+        <span key={recipient} className="font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1 py-0.5 rounded">
+          {recipient}
+        </span>
+      ) : (
+        <span key={recipient}>{recipient}</span>
+      )
+    }).reduce((prev, curr, index) => {
+      return index === 0 ? [curr] : [...prev, ', ', curr]
+    }, [] as React.ReactNode[])
+  }
 
   // Get category badge configuration
   const getCategoryBadge = (category: string) => {
@@ -421,24 +440,28 @@ export function ThreadDetailView({ thread, messages }: ThreadDetailViewProps) {
                             onChange={() => toggleMessageSelection(message.id)}
                             className="h-4 w-4 text-blue-600 rounded border-gray-300"
                           />
-                          <p className="font-semibold text-gray-900 dark:text-gray-100">{message.from_name || message.from_email}</p>
-                          <span className="text-xs text-gray-600 dark:text-gray-400">({message.from_email})</span>
+                          <div className="text-xs text-gray-700 dark:text-gray-300">
+                            <span className="font-medium">From:</span> {message.from_name || message.from_email || 'Unknown'}
+                            {message.from_email && message.from_name && (
+                              <span className="text-gray-600 dark:text-gray-400"> ({message.from_email})</span>
+                            )}
+                          </div>
                         </div>
                         
                         <div className="mt-1 space-y-1">
                           {message.to_recipients && message.to_recipients.length > 0 && (
                             <div className="text-xs text-gray-700 dark:text-gray-300">
-                              <span className="font-medium">To:</span> {message.to_recipients.join(', ')}
+                              <span className="font-medium">To:</span> {highlightUserEmail(message.to_recipients)}
                             </div>
                           )}
                           {message.cc_recipients && message.cc_recipients.length > 0 && (
                             <div className="text-xs text-gray-700 dark:text-gray-300">
-                              <span className="font-medium">CC:</span> {message.cc_recipients.join(', ')}
+                              <span className="font-medium">CC:</span> {highlightUserEmail(message.cc_recipients)}
                             </div>
                           )}
                           {message.bcc_recipients && message.bcc_recipients.length > 0 && (
                             <div className="text-xs text-gray-700 dark:text-gray-300">
-                              <span className="font-medium">BCC:</span> {message.bcc_recipients.join(', ')}
+                              <span className="font-medium">BCC:</span> {highlightUserEmail(message.bcc_recipients)}
                             </div>
                           )}
                         </div>
@@ -473,6 +496,12 @@ export function ThreadDetailView({ thread, messages }: ThreadDetailViewProps) {
                     body={message.body || ''}
                     contentType={message.content_type || 'text/html'}
                     className="shadow-sm"
+                    toRecipients={message.to_recipients || []}
+                    ccRecipients={message.cc_recipients || []}
+                    bccRecipients={message.bcc_recipients || []}
+                    userEmail={userEmail}
+                    fromName={message.from_name || undefined}
+                    fromEmail={message.from_email || undefined}
                   />
                   
                   {index < messages.length - 1 && (

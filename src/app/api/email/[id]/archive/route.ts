@@ -22,7 +22,7 @@ export async function POST(
       .from('email_threads')
       .select(`
         *,
-        email_messages!inner (
+        email_messages (
           message_id,
           subject,
           from_email,
@@ -34,52 +34,57 @@ export async function POST(
       .eq('user_id', user.id)
       .single()
 
-    if (!thread || !thread.email_messages[0]?.message_id) {
-      return NextResponse.json({ error: 'Email not found' }, { status: 404 })
+    if (!thread) {
+      return NextResponse.json({ error: 'Email thread not found' }, { status: 404 })
     }
 
-    const latestMessage = thread.email_messages[0]
+    const latestMessage = thread.email_messages?.[0]
     let archivedFolder = 'Archive'
 
-    // Try intelligent folder archiving first
-    try {
-      const folderManager = new IntelligentFolderManager()
-      await folderManager.initialize(user.id)
+    // Only try to archive in mailbox if we have a message_id
+    if (latestMessage?.message_id) {
+      // Try intelligent folder archiving first
+      try {
+        const folderManager = new IntelligentFolderManager()
+        await folderManager.initialize(user.id)
 
-      const emailContext = {
-        subject: latestMessage.subject || '',
-        from: latestMessage.from_email || '',
-        to: [], // Could be populated from thread data
-        body: latestMessage.body || '',
-        date: new Date(latestMessage.received_at)
-      }
+        const emailContext = {
+          subject: latestMessage.subject || thread.subject || '',
+          from: latestMessage.from_email || thread.from_email || '',
+          to: [], // Could be populated from thread data
+          body: latestMessage.body || '',
+          date: new Date(latestMessage.received_at || thread.last_message_date)
+        }
 
-      console.log(`📁 Archiving email "${latestMessage.subject}" using intelligent folder system`)
-      
-      const result = await folderManager.archiveToSmartFolder(
-        latestMessage.message_id,
-        emailContext
-      )
+        console.log(`📁 Archiving email "${emailContext.subject}" using intelligent folder system`)
+        
+        const result = await folderManager.archiveToSmartFolder(
+          latestMessage.message_id,
+          emailContext
+        )
 
-      if (result.success) {
-        archivedFolder = result.folder
-        console.log(`✅ Email archived to intelligent folder: ${result.folder}`)
-      } else {
-        console.error('Smart archive failed, falling back to regular archive:', result.error)
-        throw new Error(result.error)
-      }
-    } catch (error) {
-      console.error('Intelligent folder archiving failed:', error)
-      
-      // Fallback to regular archive
-      const mailboxActions = await MailboxActions.forUser(user.id)
-      if (mailboxActions) {
-        const result = await mailboxActions.archiveEmail(latestMessage.message_id)
-        if (!result.success) {
-          console.error('Failed to archive in mailbox:', result.error)
-          // Continue with DB update even if mailbox action fails
+        if (result.success) {
+          archivedFolder = result.folder
+          console.log(`✅ Email archived to intelligent folder: ${result.folder}`)
+        } else {
+          console.error('Smart archive failed, falling back to regular archive:', result.error)
+          throw new Error(result.error)
+        }
+      } catch (error) {
+        console.error('Intelligent folder archiving failed:', error)
+        
+        // Fallback to regular archive
+        const mailboxActions = await MailboxActions.forUser(user.id)
+        if (mailboxActions) {
+          const result = await mailboxActions.archiveEmail(latestMessage.message_id)
+          if (!result.success) {
+            console.error('Failed to archive in mailbox:', result.error)
+            // Continue with DB update even if mailbox action fails
+          }
         }
       }
+    } else {
+      console.log(`📁 No message_id found for thread ${emailId}, only updating database`)
     }
     
     // Update the email thread in database

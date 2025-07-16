@@ -35,7 +35,10 @@ interface EmailThread {
   email_messages: Array<{
     id: string
     from_email: string
+    from_name?: string
     to_recipients: string[]
+    cc_recipients?: string[]
+    bcc_recipients?: string[]
     body: string
     received_at: string
   }>
@@ -496,6 +499,24 @@ export default function InboxZeroPage() {
     }
   }
 
+  // Utility function to highlight user's email
+  const highlightUserEmail = (recipients: string[]) => {
+    if (!user?.email) return recipients.join(', ')
+    
+    return recipients.map(recipient => {
+      const isUserEmail = recipient.toLowerCase().includes(user.email.toLowerCase())
+      return isUserEmail ? (
+        <span key={recipient} className="font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1 py-0.5 rounded">
+          {recipient}
+        </span>
+      ) : (
+        <span key={recipient}>{recipient}</span>
+      )
+    }).reduce((prev, curr, index) => {
+      return index === 0 ? [curr] : [...prev, ', ', curr]
+    }, [] as React.ReactNode[])
+  }
+
   // Loading state
   if (state.step === 'loading') {
     return (
@@ -710,8 +731,31 @@ export default function InboxZeroPage() {
                     <div className="flex-1">
                       <CardTitle className="text-lg mb-2">{state.current_email.subject}</CardTitle>
                       <CardDescription className="mb-3">
-                        From: {state.current_email.from_email} • {new Date(state.current_email.last_message_date).toLocaleString()}
+                        From: {state.current_email.email_messages[0]?.from_name || state.current_email.from_email} • {new Date(state.current_email.last_message_date).toLocaleString()}
                       </CardDescription>
+                      
+                      {/* Recipient Information */}
+                      {state.current_email.email_messages[0] && (
+                        <div className="mb-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                          <div className="space-y-1">
+                            {state.current_email.email_messages[0].to_recipients && state.current_email.email_messages[0].to_recipients.length > 0 && (
+                              <div className="text-xs text-gray-700 dark:text-gray-300">
+                                <span className="font-medium">To:</span> {highlightUserEmail(state.current_email.email_messages[0].to_recipients)}
+                              </div>
+                            )}
+                            {state.current_email.email_messages[0].cc_recipients && state.current_email.email_messages[0].cc_recipients.length > 0 && (
+                              <div className="text-xs text-gray-700 dark:text-gray-300">
+                                <span className="font-medium">CC:</span> {highlightUserEmail(state.current_email.email_messages[0].cc_recipients)}
+                              </div>
+                            )}
+                            {state.current_email.email_messages[0].bcc_recipients && state.current_email.email_messages[0].bcc_recipients.length > 0 && (
+                              <div className="text-xs text-gray-700 dark:text-gray-300">
+                                <span className="font-medium">BCC:</span> {highlightUserEmail(state.current_email.email_messages[0].bcc_recipients)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                       
                       {/* AI Suggestion */}
                       {state.current_email.suggestion && (

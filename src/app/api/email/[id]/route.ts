@@ -21,7 +21,7 @@ export async function DELETE(
       .from('email_threads')
       .select(`
         *,
-        email_messages!inner (
+        email_messages (
           message_id
         )
       `)
@@ -29,18 +29,24 @@ export async function DELETE(
       .eq('user_id', user.id)
       .single()
 
-    if (!thread || !thread.email_messages[0]?.message_id) {
-      return NextResponse.json({ error: 'Email not found' }, { status: 404 })
+    if (!thread) {
+      return NextResponse.json({ error: 'Email thread not found' }, { status: 404 })
     }
 
-    // Perform actual mailbox delete
-    const mailboxActions = await MailboxActions.forUser(user.id)
-    if (mailboxActions) {
-      const result = await mailboxActions.deleteEmail(thread.email_messages[0].message_id)
-      if (!result.success) {
-        console.error('Failed to delete in mailbox:', result.error)
-        // Continue with DB update even if mailbox action fails
+    // Only try to delete in mailbox if we have a message_id
+    const latestMessage = thread.email_messages?.[0]
+    if (latestMessage?.message_id) {
+      // Perform actual mailbox delete
+      const mailboxActions = await MailboxActions.forUser(user.id)
+      if (mailboxActions) {
+        const result = await mailboxActions.deleteEmail(latestMessage.message_id)
+        if (!result.success) {
+          console.error('Failed to delete in mailbox:', result.error)
+          // Continue with DB update even if mailbox action fails
+        }
       }
+    } else {
+      console.log(`🗑️ No message_id found for thread ${emailId}, only updating database`)
     }
     
     // Update the email thread in database

@@ -16,11 +16,14 @@ export async function GET(request: NextRequest) {
       .from('email_threads')
       .select(`
         *,
-        email_messages!inner (
+        email_messages (
           id,
           subject,
           from_email,
+          from_name,
           to_recipients,
+          cc_recipients,
+          bcc_recipients,
           received_at,
           body,
           is_archived,
@@ -42,13 +45,32 @@ export async function GET(request: NextRequest) {
     }
 
     const email = threads[0]
+    
+    // Handle threads without messages
+    if (!email.email_messages || email.email_messages.length === 0) {
+      // Create a placeholder message structure for threads without messages
+      email.email_messages = [{
+        id: email.id,
+        subject: email.subject || 'No Subject',
+        from_email: email.from_email || 'unknown@email.com',
+        from_name: null,
+        to_recipients: [],
+        cc_recipients: [],
+        bcc_recipients: [],
+        received_at: email.last_message_date || new Date().toISOString(),
+        body: '',
+        is_archived: false,
+        is_deleted: false
+      }]
+    }
+    
     const latestMessage = email.email_messages[0]
     
     // Get AI suggestion using learning engine
     const learningEngine = new InboxZeroLearningEngine(supabase, user.id)
     const suggestion = await learningEngine.suggestAction({
-      from_email: latestMessage.from_email,
-      subject: email.subject,
+      from_email: latestMessage.from_email || email.from_email || 'unknown@email.com',
+      subject: email.subject || latestMessage.subject || 'No Subject',
       body: latestMessage.body || '',
       estimated_time_seconds: estimateProcessingTime(latestMessage.body || '')
     })

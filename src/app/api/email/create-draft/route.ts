@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       const { data: thread } = await supabase
         .from('email_threads')
         .select(`
-          email_messages!inner (
+          email_messages (
             message_id
           )
         `)
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
         .eq('user_id', user.id)
         .single()
 
-      originalMessageId = thread?.email_messages[0]?.message_id
+      originalMessageId = thread?.email_messages?.[0]?.message_id
     }
 
     // Create draft in actual mailbox

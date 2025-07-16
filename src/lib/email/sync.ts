@@ -73,8 +73,8 @@ export class EmailSyncService {
   private async initializeServices() {
     try {
       // Lazy load services to avoid circular dependencies
-      const { VectorStoreService } = await import('../vector-store/vector-store-service')
-      const { EmailClassificationProcessor } = await import('../ai/email-classification')
+      const { VectorStoreService } = await import('../vector-store/service')
+      const { EmailClassificationProcessor } = await import('../agents/email-classifier')
       
       this.vectorStoreService = new VectorStoreService()
       this.classificationProcessor = new EmailClassificationProcessor()
