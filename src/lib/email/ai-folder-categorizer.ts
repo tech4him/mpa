@@ -254,9 +254,16 @@ SECURITY EMAIL PRIORITY:
 - Security policies, compliance → Security category
 - Only use vendor category for support tickets, not security incidents
 
+1-ON-1 MEETING CATEGORIZATION:
+- Internal staff 1-on-1s (from @missionmutual.org) → HR/Personnel/[PersonName]
+- External partner 1-on-1s → Partnerships/[PersonName] or appropriate external category
+- Always extract the person's name for proper relationship filing
+- These are relationship management activities, not general operations
+
 ENTITY EXTRACTION GUIDELINES:
-- Only extract person names for direct individual actions (performance reviews, disciplinary actions, individual development)
+- Extract person names for individual relationship activities: 1-on-1s, performance reviews, disciplinary actions, individual development
 - Do NOT extract person names for general processes (onboarding, policy updates, team communications)
+- For 1-on-1 meetings: ALWAYS extract the person's name for proper filing
 - Project names should be extracted ONLY for project-specific communications where the project is clearly identified
 - Client names for client-specific work or relationships
 - If no specific entity is clearly identified, set entity to null - do NOT guess or use fallback values
@@ -264,6 +271,8 @@ ENTITY EXTRACTION GUIDELINES:
 
 EXAMPLES OF GOOD CATEGORIZATION:
 - Performance review meeting notes → HR/Personnel/[EmployeeName] (direct individual action)
+- 1-on-1 meeting agenda with Andrew → HR/Personnel/Andrew (relationship management, internal staff)
+- 1-on-1 meeting notes with external partner → Partnerships/[PartnerName] (external relationship)
 - New staff onboarding from BiblioNexus → HR/Onboarding (staff transition process)
 - Staff names/email setup for new hires → HR/Onboarding (onboarding logistics)
 - Budget planning email → Finance/Budget/[FiscalYear] (business purpose: Finance, context: planning cycle)
