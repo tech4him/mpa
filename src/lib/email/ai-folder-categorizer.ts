@@ -136,6 +136,8 @@ export class AIFolderCategorizer {
       const data = await response.json()
       const result = JSON.parse(data.choices[0].message.content)
       
+      console.log(`🤖 Raw AI response:`, JSON.stringify(result, null, 2))
+      
       // Validate and build folder path
       const folderPath = this.buildFolderPath(result)
       
@@ -248,8 +250,10 @@ DECISION FRAMEWORK:
 ENTITY EXTRACTION GUIDELINES:
 - Only extract person names for direct individual actions (performance reviews, disciplinary actions, individual development)
 - Do NOT extract person names for general processes (onboarding, policy updates, team communications)
-- Project names should be extracted for project-specific communications
+- Project names should be extracted ONLY for project-specific communications where the project is clearly identified
 - Client names for client-specific work or relationships
+- If no specific entity is clearly identified, set entity to null - do NOT guess or use fallback values
+- NEVER extract entity names from the known patterns list unless they are explicitly mentioned in the email
 
 EXAMPLES OF GOOD CATEGORIZATION:
 - Performance review meeting notes → HR/Personnel/[EmployeeName] (direct individual action)
@@ -281,12 +285,23 @@ Think about the executive's needs, business context, and any correction patterns
   private buildFolderPath(result: any): string {
     const { category, subcategory, entity, entity_type, fiscal_year } = result
     
+    console.log(`🔧 Building folder path from AI result:`, {
+      category,
+      subcategory,
+      entity,
+      entity_type,
+      fiscal_year
+    })
+    
     // Start with the primary business category
     let path = category
     
     // Add subcategory if provided (functional area)
     if (subcategory) {
       path = `${category}/${subcategory}`
+    } else if (category === 'Projects') {
+      // For Projects category without subcategory, use General
+      path = `${category}/General`
     }
     
     // Add entity-specific folder if provided and rules allow
@@ -305,6 +320,7 @@ Think about the executive's needs, business context, and any correction patterns
       path = pathParts.slice(0, this.parameters.max_depth).join('/')
     }
     
+    console.log(`📁 Final folder path: ${path}`)
     return path
   }
 
