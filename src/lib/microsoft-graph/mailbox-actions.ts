@@ -10,6 +10,7 @@ interface MailboxActionResult {
 export class MailboxActions {
   private accessToken: string
   private userId: string
+  private folderCache: Map<string, string> = new Map() // path -> id
 
   constructor(accessToken: string, userId: string) {
     this.accessToken = accessToken
@@ -228,6 +229,147 @@ export class MailboxActions {
     } catch (error) {
       console.error('Failed to get/create snoozed folder:', error)
       return null
+    }
+  }
+
+  /**
+   * Ensure a folder exists, creating it if necessary
+   */
+  async ensureFolder(folderPath: string): Promise<{ success: boolean; folderId?: string; error?: string }> {
+    try {
+      // Check cache first
+      if (this.folderCache.has(folderPath)) {
+        return { 
+          success: true, 
+          folderId: this.folderCache.get(folderPath) 
+        }
+      }
+
+      // Split path into parts
+      const parts = folderPath.split('/')
+      let currentPath = ''
+      let parentId = null
+
+      for (const part of parts) {
+        currentPath = currentPath ? `${currentPath}/${part}` : part
+        
+        // Check if this level exists in cache
+        if (this.folderCache.has(currentPath)) {
+          parentId = this.folderCache.get(currentPath)
+          continue
+        }
+
+        // Search for existing folder
+        const searchQuery = parentId 
+          ? `/me/mailFolders/${parentId}/childFolders?$filter=displayName eq '${part}'`
+          : `/me/mailFolders?$filter=displayName eq '${part}'`
+
+        const searchResponse = await fetch(`https://graph.microsoft.com/v1.0${searchQuery}`, {
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!searchResponse.ok) {
+          throw new Error(`Search failed: ${searchResponse.statusText}`)
+        }
+
+        const searchData = await searchResponse.json()
+        
+        if (searchData.value && searchData.value.length > 0) {
+          // Folder exists
+          parentId = searchData.value[0].id
+          this.folderCache.set(currentPath, parentId)
+        } else {
+          // Create folder
+          const createUrl = parentId 
+            ? `https://graph.microsoft.com/v1.0/me/mailFolders/${parentId}/childFolders`
+            : `https://graph.microsoft.com/v1.0/me/mailFolders`
+
+          const createResponse = await fetch(createUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              displayName: part
+            })
+          })
+
+          if (!createResponse.ok) {
+            throw new Error(`Create folder failed: ${createResponse.statusText}`)
+          }
+
+          const createData = await createResponse.json()
+          parentId = createData.id
+          this.folderCache.set(currentPath, parentId)
+        }
+      }
+
+      return { success: true, folderId: parentId }
+    } catch (error) {
+      console.error('Failed to ensure folder:', error)
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }
+    }
+  }
+
+  /**
+   * Move a message to a specific folder
+   */
+  async moveToFolder(messageId: string, folderId: string): Promise<MailboxActionResult> {
+    try {
+      const response = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${messageId}/move`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          destinationId: folderId
+        })
+      })
+
+      if (response.ok) {
+        return { success: true }
+      } else {
+        const error = await response.text()
+        return { success: false, error }
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }
+    }
+  }
+
+  /**
+   * Get folder hierarchy for debugging
+   */
+  async getFolderHierarchy(): Promise<any[]> {
+    try {
+      const response = await fetch('https://graph.microsoft.com/v1.0/me/mailFolders', {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        return data.value || []
+      } else {
+        console.error('Failed to get folder hierarchy:', response.statusText)
+        return []
+      }
+    } catch (error) {
+      console.error('Error getting folder hierarchy:', error)
+      return []
     }
   }
 }
