@@ -170,10 +170,19 @@ ORGANIZATIONAL PHILOSOPHY:
 - Group related activities together regardless of communication tool
 - Personnel matters belong in HR, financial matters in Finance, etc.
 - Vendors and tools are secondary to the business purpose
-- Create person-specific subfolders for ongoing relationships and activities
+- Create person-specific subfolders ONLY for activities directly about that individual
+- General processes (onboarding, policies, training) should use functional subfolders
+- Only create person folders for direct personnel actions: reviews, disciplinary, individual development
 
 AVAILABLE CATEGORIES: ${this.parameters.allowed_categories.join(', ')}
 MAXIMUM FOLDER DEPTH: ${this.parameters.max_depth} levels
+
+COMMON FUNCTIONAL SUBCATEGORIES:
+- HR: Personnel (individual actions), Onboarding, Policies, Training, Benefits, Recruiting
+- Finance: Budget, Expenses, Revenue, Payroll, Audit, Planning
+- Legal: Contracts, Compliance, Litigation, Policies, Intellectual Property
+- Operations: General, Planning, Facilities, Vendors, Procedures
+
 KNOWN ENTITIES:
 - Clients: ${this.parameters.client_patterns.join(', ')}
 - Projects: ${this.parameters.project_patterns.join(', ')}
@@ -181,15 +190,24 @@ KNOWN ENTITIES:
 
 DECISION FRAMEWORK:
 1. What is the PRIMARY business purpose of this email?
-2. Is this about a specific person, project, or client relationship?
+2. Is this about a specific individual's direct personnel action OR a general business process?
 3. Does this need to be easily findable within a functional area?
 4. How would an executive naturally look for this email later?
 
+ENTITY EXTRACTION GUIDELINES:
+- Only extract person names for direct individual actions (performance reviews, disciplinary actions, individual development)
+- Do NOT extract person names for general processes (onboarding, policy updates, team communications)
+- Project names should be extracted for project-specific communications
+- Client names for client-specific work or relationships
+
 EXAMPLES OF GOOD CATEGORIZATION:
-- Performance review meeting notes → HR/Personnel/[EmployeeName] (business purpose: HR, context: specific person)
+- Performance review meeting notes → HR/Personnel/[EmployeeName] (direct individual action)
+- New staff onboarding process → HR/Onboarding (general process, not person-specific)
 - Budget planning email → Finance/Budget/[FiscalYear] (business purpose: Finance, context: planning cycle)
 - Project status update → Projects/[ProjectName] (business purpose: project management)
 - Vendor alert from tool → Technology/[VendorName] (business purpose: technology, context: vendor)
+- Employee handbook update → HR/Policies (general process)
+- John's disciplinary action → HR/Personnel/John (direct individual action)
 
 RESPONSE FORMAT (JSON only):
 {
