@@ -88,13 +88,18 @@ export class MailboxActions {
 
   async snoozeEmail(messageId: string, snoozeUntil: Date): Promise<MailboxActionResult> {
     try {
+      console.log(`🕐 Snoozing email ${messageId} until ${snoozeUntil.toISOString()}`)
+      
       // Move to a custom "Snoozed" folder and set flag
       // First, try to create/get the Snoozed folder
       const folderId = await this.getOrCreateSnoozedFolder()
       
       if (!folderId) {
+        console.error('Failed to get or create Snoozed folder')
         return { success: false, error: 'Failed to create snoozed folder' }
       }
+
+      console.log(`📁 Moving email to Snoozed folder (ID: ${folderId})`)
 
       // Move email to snoozed folder
       const moveResponse = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${messageId}/move`, {
@@ -109,12 +114,15 @@ export class MailboxActions {
       })
 
       if (moveResponse.ok) {
+        console.log(`✅ Email ${messageId} successfully snoozed`)
         return { success: true }
       } else {
         const error = await moveResponse.text()
+        console.error(`❌ Failed to move email to Snoozed folder:`, error)
         return { success: false, error: `Failed to snooze email: ${error}` }
       }
     } catch (error) {
+      console.error(`❌ Snooze failed for email ${messageId}:`, error)
       return { success: false, error: `Snooze failed: ${error}` }
     }
   }
@@ -192,39 +200,14 @@ export class MailboxActions {
 
   private async getOrCreateSnoozedFolder(): Promise<string | null> {
     try {
-      // First, check if Snoozed folder exists
-      const foldersResponse = await fetch('https://graph.microsoft.com/v1.0/me/mailFolders', {
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`
-        }
-      })
-
-      if (foldersResponse.ok) {
-        const folders = await foldersResponse.json()
-        const snoozedFolder = folders.value.find((f: any) => f.displayName === 'Snoozed')
-        
-        if (snoozedFolder) {
-          return snoozedFolder.id
-        }
+      // Use the existing ensureFolder method which handles caching and hierarchical creation
+      const result = await this.ensureFolder('Snoozed')
+      
+      if (result.success && result.folderId) {
+        return result.folderId
       }
 
-      // Create Snoozed folder if it doesn't exist
-      const createResponse = await fetch('https://graph.microsoft.com/v1.0/me/mailFolders', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          displayName: 'Snoozed'
-        })
-      })
-
-      if (createResponse.ok) {
-        const newFolder = await createResponse.json()
-        return newFolder.id
-      }
-
+      console.error('Failed to ensure Snoozed folder:', result.error)
       return null
     } catch (error) {
       console.error('Failed to get/create snoozed folder:', error)
