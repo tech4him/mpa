@@ -46,7 +46,8 @@ export class AIFolderCategorizer {
       'Partnerships',
       'Projects',
       'Vendors',
-      'Governance'
+      'Governance',
+      'Security'
     ],
     client_patterns: [
       'biblionexus',
@@ -227,7 +228,7 @@ ORGANIZATIONAL PHILOSOPHY:
 - General processes (onboarding, policies, training) should use functional subfolders
 - Only create person folders for direct personnel actions: reviews, disciplinary, individual development
 
-AVAILABLE CATEGORIES: ${this.parameters.allowed_categories.join(', ')}
+AVAILABLE CATEGORIES: ${this.parameters.allowed_categories.join(', ')}, Security
 MAXIMUM FOLDER DEPTH: ${this.parameters.max_depth} levels
 
 COMMON FUNCTIONAL SUBCATEGORIES:
@@ -235,6 +236,7 @@ COMMON FUNCTIONAL SUBCATEGORIES:
 - Finance: Budget, Expenses, Revenue, Payroll, Audit, Planning
 - Legal: Contracts, Compliance, Litigation, Policies, Intellectual Property
 - Operations: General, Planning, Facilities, Vendors, Procedures
+- Security: Alerts, Incidents, Policies, Digital, Physical, Compliance
 
 KNOWN ENTITIES:
 - Clients: ${this.parameters.client_patterns.join(', ')}
@@ -246,6 +248,11 @@ DECISION FRAMEWORK:
 2. Is this about a specific individual's direct personnel action OR a general business process?
 3. Does this need to be easily findable within a functional area?
 4. How would an executive naturally look for this email later?
+
+SECURITY EMAIL PRIORITY:
+- Security threats, incidents, alerts → Security category (NOT vendor category)
+- Security policies, compliance → Security category
+- Only use vendor category for support tickets, not security incidents
 
 ENTITY EXTRACTION GUIDELINES:
 - Only extract person names for direct individual actions (performance reviews, disciplinary actions, individual development)
@@ -261,9 +268,11 @@ EXAMPLES OF GOOD CATEGORIZATION:
 - Staff names/email setup for new hires → HR/Onboarding (onboarding logistics)
 - Budget planning email → Finance/Budget/[FiscalYear] (business purpose: Finance, context: planning cycle)
 - Project status update → Projects/[ProjectName] (business purpose: project management)
-- Vendor alert from tool → Technology/[VendorName] (business purpose: technology, context: vendor)
+- Security threat alert from Microsoft → Security/Alerts (business purpose: security incident, not vendor)
+- Vendor support ticket → Technology/[VendorName] (business purpose: technology support)
 - Employee handbook update → HR/Policies (policy changes)
 - John's disciplinary action → HR/Personnel/John (direct individual action)
+- Physical security report → Security/Physical (business purpose: physical security)
 
 RESPONSE FORMAT (JSON only):
 {
