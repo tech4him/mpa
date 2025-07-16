@@ -99,9 +99,12 @@ export class AIFolderCategorizer {
    * Use AI to categorize email and determine folder structure
    */
   async categorizeEmail(emailContext: EmailContext): Promise<CategoryResult> {
-    const prompt = this.buildCategorizationPrompt(emailContext)
-    
     try {
+      // Get learning context from user corrections and vector store
+      const learningContext = await this.getLearningContext(emailContext)
+      
+      const prompt = this.buildCategorizationPrompt(emailContext, learningContext)
+      
       // Call OpenAI API for categorization
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -114,7 +117,7 @@ export class AIFolderCategorizer {
           messages: [
             {
               role: 'system',
-              content: 'You are an expert email categorization system for executive email management. Return only valid JSON.'
+              content: 'You are an expert email categorization system for executive email management. Learn from user corrections and organizational context. Return only valid JSON.'
             },
             {
               role: 'user',
@@ -146,7 +149,55 @@ export class AIFolderCategorizer {
     }
   }
 
-  private buildCategorizationPrompt(emailContext: EmailContext): string {
+  /**
+   * Get learning context from user corrections and vector store
+   */
+  private async getLearningContext(emailContext: EmailContext): Promise<string> {
+    try {
+      const supabase = await import('@/lib/supabase/server').then(m => m.createClient())
+      
+      // Get user correction patterns
+      const { data: corrections } = await supabase
+        .rpc('get_folder_learning_context', { p_user_id: this.userId })
+      
+      // Get relevant organizational context from vector store
+      let vectorContext = ''
+      try {
+        const { VectorStoreService } = await import('../vector-store/vector-store-service')
+        const vectorStore = new VectorStoreService()
+        
+        // Search for relevant organizational knowledge
+        const searchQuery = `${emailContext.subject} ${emailContext.from} ${emailContext.body.substring(0, 500)}`
+        const searchResults = await vectorStore.searchUserVectorStore(this.userId, searchQuery, 3)
+        
+        if (searchResults.length > 0) {
+          vectorContext = `
+ORGANIZATIONAL CONTEXT (from previous emails and documents):
+${searchResults.map(result => `- ${result.snippet}`).join('\n')}
+`
+        }
+      } catch (error) {
+        console.log('Vector store context unavailable:', error)
+      }
+      
+      // Build learning context
+      let learningContext = ''
+      
+      if (corrections && corrections.length > 0) {
+        learningContext += `
+USER CORRECTION PATTERNS (learn from these):
+${corrections.map(c => `- When AI suggests "${c.suggested_folder}", user often corrects to "${c.pattern_value}"`).join('\n')}
+`
+      }
+      
+      return learningContext + vectorContext
+    } catch (error) {
+      console.error('Failed to get learning context:', error)
+      return ''
+    }
+  }
+
+  private buildCategorizationPrompt(emailContext: EmailContext, learningContext: string = ''): string {
     const { subject, from, body, date } = emailContext
     
     return `
@@ -221,7 +272,9 @@ RESPONSE FORMAT (JSON only):
   "fiscal_year": "FY25 if applicable to financial matters"
 }
 
-Think about the executive's needs and business context, then respond with JSON only:
+${learningContext}
+
+Think about the executive's needs, business context, and any correction patterns, then respond with JSON only:
 `
   }
 
@@ -340,5 +393,90 @@ Think about the executive's needs and business context, then respond with JSON o
    */
   async testCategorization(emailContext: EmailContext): Promise<CategoryResult> {
     return await this.categorizeEmail(emailContext)
+  }
+
+  /**
+   * Learn from user corrections to improve future categorization
+   */
+  async learnFromCorrection(
+    emailContext: EmailContext,
+    aiSuggestion: string,
+    userCorrection: string,
+    reason?: string
+  ): Promise<void> {
+    try {
+      // Extract patterns from the correction
+      const patterns = this.extractPatternsFromCorrection(
+        emailContext,
+        aiSuggestion,
+        userCorrection,
+        reason
+      )
+
+      // Update entity patterns if new entities are discovered
+      for (const pattern of patterns) {
+        if (pattern.type === 'project' && pattern.entity) {
+          await this.addEntityPattern('project', pattern.entity)
+        } else if (pattern.type === 'client' && pattern.entity) {
+          await this.addEntityPattern('client', pattern.entity)
+        } else if (pattern.type === 'vendor' && pattern.entity) {
+          await this.addEntityPattern('vendor', pattern.entity)
+        }
+      }
+
+      console.log(`📚 Learned from correction: ${aiSuggestion} → ${userCorrection}`)
+    } catch (error) {
+      console.error('Failed to learn from correction:', error)
+    }
+  }
+
+  private extractPatternsFromCorrection(
+    emailContext: EmailContext,
+    aiSuggestion: string,
+    userCorrection: string,
+    reason?: string
+  ): Array<{ type: string; entity?: string; pattern: string }> {
+    const patterns: Array<{ type: string; entity?: string; pattern: string }> = []
+    
+    // Extract project patterns
+    if (userCorrection.includes('Projects/')) {
+      const projectMatch = userCorrection.match(/Projects\/([^\/]+)/)
+      if (projectMatch) {
+        const projectName = projectMatch[1].toLowerCase()
+        patterns.push({
+          type: 'project',
+          entity: projectName,
+          pattern: projectName
+        })
+      }
+    }
+
+    // Extract client patterns
+    if (userCorrection.includes('Clients/')) {
+      const clientMatch = userCorrection.match(/Clients\/([^\/]+)/)
+      if (clientMatch) {
+        const clientName = clientMatch[1].toLowerCase()
+        patterns.push({
+          type: 'client',
+          entity: clientName,
+          pattern: clientName
+        })
+      }
+    }
+
+    // Extract vendor patterns
+    if (userCorrection.includes('Vendors/')) {
+      const vendorMatch = userCorrection.match(/Vendors\/([^\/]+)/)
+      if (vendorMatch) {
+        const vendorName = vendorMatch[1].toLowerCase()
+        patterns.push({
+          type: 'vendor',
+          entity: vendorName,
+          pattern: vendorName
+        })
+      }
+    }
+
+    return patterns
   }
 }
